@@ -1,0 +1,8 @@
+*/.ipynb_checkpoints
+*/mylibrary
+DATASETS
+.my_symlinks
+Perfect_Encoder/save
+My_StackedAE/save
+.ipynb_checkpoints
+**/*.ipynb_checkpoints/
