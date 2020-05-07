@@ -1,0 +1,5 @@
+https://jacobgil.github.io/deeplearning/pruning-deep-learning
+
+https://papers.nips.cc/paper/6372-learning-the-number-of-neurons-in-deep-networks.pdf
+
+https://heartbeat.fritz.ai/research-guide-pruning-techniques-for-neural-networks-d9b8440ab10d
