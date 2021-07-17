@@ -6,3 +6,5 @@ Perfect_Encoder/save
 My_StackedAE/save
 .ipynb_checkpoints
 **/*.ipynb_checkpoints/
+*/__pycache__
+**/*/__pycache__/

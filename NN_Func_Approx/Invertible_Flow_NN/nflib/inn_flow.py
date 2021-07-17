@@ -14,10 +14,10 @@ def smooth_l1(x, beta=1):
     return y
 
 class iNN_Flow(Flow):
-    def __init__(self, dim, hidden_dims:list, activation=Swish, jacob_iter=2, inverse_iter=200, reverse=False):
+    def __init__(self, dim, hidden_dims:list, activation=TanhLU, jacob_iter=2, inverse_iter=200, reverse=False):
         super().__init__()
         assert len(hidden_dims)>0, "Dims should include N x hidden units"
-        assert activation in [ReLU, LeakyReLU, Swish], "Use ReLU or LeakyReLU or Swish"
+        assert activation in [ReLU, LeakyReLU, Swish, TanhLU], "Use only defined Activations"
         self.n_iter = inverse_iter
         self.jacob_iter = jacob_iter
         self.reverse = reverse

@@ -23,6 +23,18 @@ class LeakyReLU(nn.Module):
         mask = (x > 0).type(x.dtype)
         mask += (1-mask)*self.alpha
         return x*mask, mask
+    
+
+class TanhLU(nn.Module):
+
+    def forward(self, x):
+        y = x
+        dy = torch.ones_like(x)
+        
+        mask = x < 0
+        y[mask] = torch.tanh(x[mask])
+        dy[mask] =(1 - y[mask] ** 2)
+        return y, dy
 
 
 class Swish(nn.Module):
