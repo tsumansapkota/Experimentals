@@ -236,7 +236,7 @@ class ResidualFlow(Flow):
     def __init__(self, dim, hidden_dims:list, activation=Swish, scaler=0.97, lipschitz_iter=2, inverse_iter=200, reverse=False):
         super().__init__()
         assert len(hidden_dims)>0, "Dims should include N x hidden units"
-        assert activation in [ReLU, LeakyReLU, Swish], "Use ReLU or LeakyReLU or Swish"
+        # assert activation in [ReLU, LeakyReLU, Swish], "Use ReLU or LeakyReLU or Swish"
         self.n_iter = inverse_iter
 
         self.reverse = reverse
