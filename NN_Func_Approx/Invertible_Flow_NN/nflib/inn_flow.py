@@ -40,7 +40,7 @@ class TanhLU(nn.Module):
 
     @property
     def det_bound(self):
-        return torch.Tensor([0.01,1])
+        return torch.Tensor([0.001,1])
 
     def forward(self, x):
         y = x
@@ -152,7 +152,8 @@ class iMLP_Flow(Flow):
         self._dets = dets.data
 
         c = 0.1 ## 0.1, 0.2
-        penalty = (1 - torch.minimum(dets*self.sign-0.2, torch.Tensor([c]))/c)**2
+        penalty = (1 - torch.minimum(dets*self.sign-0.2, torch.Tensor([c]))/c)**2 +\
+                    ((1-torch.maximum(dets*self.sign-15, torch.Tensor([1.0])))**2)/10
         # penalty = (1 - torch.minimum(dets*self.sign, torch.Tensor([1])))**25
         self.det_penalty =  penalty.mean() + penalty.max()/10
         self.det_penalty.backward(retain_graph=True)
