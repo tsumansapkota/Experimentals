@@ -7,4 +7,25 @@ My_StackedAE/save
 .ipynb_checkpoints
 **/*.ipynb_checkpoints/
 */__pycache__
-**/*/__pycache__/
+**/*/__pycache__
+__pycache__/
+*.py[cod]
+
+# C extensions
+*.so
+
+# Distribution / packaging
+bin/
+build/
+develop-eggs/
+dist/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
