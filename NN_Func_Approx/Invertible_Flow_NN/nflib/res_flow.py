@@ -276,9 +276,10 @@ class ResidualFlow(Flow):
                 ### transformation by 2x3 matrix: J -> 5x2x3
                 ### mask shape -> 5x3; so convert to -> 5x1x3
                 ### unsqueeze mask in dim 1 and multiply
+        # return x + res*self.scaler,\
+        #         torch.det(torch.eye(x.shape[1])+ J*self.scaler).abs().log()
         return x + res*self.scaler,\
-                torch.det(torch.eye(x.shape[1])+ J*self.scaler).abs().log()
-
+                torch.det(torch.eye(x.shape[1])+ J*self.scaler).log()
 
     # def _forward_yes_logDetJ(self, x):
     #     if not x.requires_grad:

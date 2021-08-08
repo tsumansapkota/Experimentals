@@ -311,7 +311,8 @@ class LinearFlow(Flow):
     def _logdetJ(self):
         # return torch.log(torch.abs(torch.det(self.weight))) 
         ### torch.logdet gives nan if negative determinant
-        return self.weight.det().abs().log()
+        # return self.weight.det().abs().log()
+        return self.weight.det().log()
 
 
 # ------------------------------------------------------------------------

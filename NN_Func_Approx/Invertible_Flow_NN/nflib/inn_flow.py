@@ -203,7 +203,8 @@ class iMLP_Flow(Flow):
 
         self.detJ = torch.det(J)
         self._jacobian_determinant_loss(self.detJ)
-        return x, self.detJ.abs().log()
+        # return x, self.detJ.abs().log()
+        return x, self.detJ.log()
 
     def _forward_no_logDetJ(self, x):
         x = self.layers[0](x)
