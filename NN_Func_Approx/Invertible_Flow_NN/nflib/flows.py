@@ -237,6 +237,10 @@ class ActNorm(AffineConstantFlow):
     def _initialize_data(self, x):
         assert self.s is not None and self.t is not None # for now
         self.s.data = (-torch.log(x.std(dim=0, keepdim=True))).detach()
+        
+        self.s.data[torch.isinf(self.s.data)] = 0
+        self.s.data[torch.isnan(self.s.data)] = 0
+        
         self.t.data = (-(x * torch.exp(self.s)).mean(dim=0, keepdim=True)).detach()
         self.data_dep_init_done = True
 
