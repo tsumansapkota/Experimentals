@@ -261,13 +261,13 @@ class ActNorm2D(ActNorm):
         ### (N, dim, h, w)
         x = x.transpose(1,3)
         xs1 = x.shape #### (N, w, h, dim)
-        x = x.view(-1, xs1[3]) ## now in shape (N*h*w, dim)
+        x = x.reshape(-1, xs1[3]) ## now in shape (N*h*w, dim)
         # the batch of data needs to be reshaped
         if logDetJ:
             z, _logdetJ = super().forward(x, True)
-            return z.view(xs1).transpose(1,3), _logdetJ
+            return z.reshape(xs1).transpose(1,3), _logdetJ
         else:
-            return super().forward(x, False).view(xs1).transpose(1,3)
+            return super().forward(x, False).reshape(xs1).transpose(1,3)
 
 
 class LinearFlow(Flow):
