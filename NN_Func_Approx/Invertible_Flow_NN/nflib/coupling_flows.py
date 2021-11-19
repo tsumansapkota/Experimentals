@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from flows import Flow
+from .flows import Flow
 
 
 class FuncGenerator():
