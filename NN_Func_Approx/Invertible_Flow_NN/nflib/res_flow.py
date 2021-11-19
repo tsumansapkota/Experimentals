@@ -413,7 +413,7 @@ class ConvResidualFlow(Flow):
         ### update spectral norm layer for some steps.
         with torch.no_grad():
             for _ in range(10):
-                _a = torch.randn(1, self.channels, 256, 256)
+                _a = torch.randn(1, self.in_channel, 256, 256)
                 for i, b in enumerate(self.resblock):
                     if i%2==0: ### if conv layer
                         _a = b(_a)
