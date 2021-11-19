@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from flows import Flow
-from coupling_flows import DimensionMixer
+from .flows import Flow
+from .coupling_flows import DimensionMixer
 
 class DownScale(Flow):
 
