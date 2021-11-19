@@ -326,3 +326,96 @@ class ResidualFlow(Flow):
                         _a = b(_a)
                     else: ### if activation function
                         _a, _ = b(_a)
+
+
+
+class ConvResidualFlow(Flow):
+    def __init__(self, in_channel, channels:list, kernels=3, activation=Swish, scaler=0.97, lipschitz_iter=2, inverse_iter=200, reverse=False):
+        super().__init__()
+        assert len(channels)>0, "Dims should include N x hidden units"
+        # assert activation in [ReLU, LeakyReLU, Swish], "Use ReLU or LeakyReLU or Swish"
+        self.n_iter = inverse_iter
+
+        self.reverse = reverse
+
+        self.in_channel = in_channel
+        self.channels = channels
+        self.activation = activation
+
+        if isinstance(kernels, int):
+            self.kernels = [kernels for _ in range(len(channels)+1)]
+        else:
+            assert len(channels)+1 == len(kernels), "The length of kernels must be one greater than number of channels"
+            self.kernels = kernels
+
+        self.paddings = [(kernel-1)//2 for kernel in self.kernels]
+
+        layers = []
+        channels = [int(self.in_channel)]+\
+                    self.channels + [int(self.in_channel)]
+        for i in range(len(channels)-1):
+            conv = nn.Conv2d(channels[i], channels[i+1], self.kernels[i], 
+                                    padding=self.paddings[i])
+            conv = nn.utils.spectral_norm(conv, n_power_iterations=lipschitz_iter)
+            layers.append(conv)
+            layers.append(self.activation())
+        
+        layers = layers[:-1]
+        self.resblock = nn.ModuleList(layers)
+        self.scaler = scaler
+        self._update_spectral_norm_init()
+
+    def forward(self, x, logDetJ:bool=False):
+        if self.reverse:
+            return self._inverse_yes_logDetJ(x) if logDetJ else self._inverse_no_logDetJ(x)
+        return self._forward_yes_logDetJ(x) if logDetJ else self._forward_no_logDetJ(x)
+    
+    def inverse(self, z, logDetJ:bool=False):
+        if self.reverse:
+            return self._forward_yes_logDetJ(z) if logDetJ else self._forward_no_logDetJ(z)
+        return self._inverse_yes_logDetJ(z) if logDetJ else self._inverse_no_logDetJ(z)
+
+    def _forward_yes_logDetJ(self, x):
+        if not x.requires_grad:
+            x = torch.autograd.Variable(x, requires_grad=True)
+        res = x
+        for i, b in enumerate(self.resblock):
+            if i%2==0: ### if conv layer
+                res = b(res)
+            else: ### if activation function
+                res, _j = b(res)
+        y = x + res*self.scaler
+        J = jacobian(y, x, True)
+        return y, torch.det(J).abs().log()
+
+    def _forward_no_logDetJ(self, x):
+        res = x
+        for i, b in enumerate(self.resblock):
+            if i%2==0: ### if conv layer
+                res = b(res)
+            else: ### if activation function
+                res, _j = b(res)
+        return x + res*self.scaler
+
+    def _inverse_yes_logDetJ(self, y):
+        g = lambda z: y - self._forward_no_logDetJ(z)
+        x = broyden(g, torch.zeros_like(y), threshold=1000, eps=1e-5)["result"]
+        _, _logdetJ = self.forward(x, True)
+        return x, -_logdetJ
+
+    def _inverse_no_logDetJ(self, y):
+        g = lambda z: y - self._forward_no_logDetJ(z)
+        x = broyden(g, torch.zeros_like(y), threshold=1000, eps=1e-5)["result"]
+        return x
+    
+
+    def _update_spectral_norm_init(self):
+        ### update spectral norm layer for some steps.
+        with torch.no_grad():
+            for _ in range(10):
+                _a = torch.randn(1, self.dim)
+                for i, b in enumerate(self.resblock):
+                    if i%2==0: ### if conv layer
+                        _a = b(_a)
+                    else: ### if activation function
+                        _a, _ = b(_a)

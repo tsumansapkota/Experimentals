@@ -1,244 +1,224 @@
-
-"""
-Code for "i-RevNet: Deep Invertible Networks"
-https://openreview.net/pdf?id=HJsjkMb0Z
-ICLR, 2018
-(c) Joern-Henrik Jacobsen, 2018
-"""
-
-# https://github.com/jhjacobsen/pytorch-i-revnet/blob/master/models/iRevNet.py
-# https://github.com/jhjacobsen/pytorch-i-revnet/blob/master/models/model_utils.py
-
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.autograd import Variable
-from torch.nn import Parameter
 
+from flows import Flow
+from coupling_flows import DimensionMixer
 
-class irevnet_block(nn.Module):
-    def __init__(self, in_ch, out_ch, stride=1, first=False, dropout_rate=0.,
-                 affineBN=True, mult=4):
-        """ buid invertible bottleneck block """
-        super(irevnet_block, self).__init__()
-        self.first = first
-        self.pad = 2 * out_ch - in_ch
-        self.stride = stride
-        self.inj_pad = injective_pad(self.pad)
-        self.psi = psi(stride)
-        if self.pad != 0 and stride == 1:
-            in_ch = out_ch * 2
-            print('')
-            print('| Injective iRevNet |')
-            print('')
-        layers = []
-        if not first:
-            layers.append(nn.BatchNorm2d(in_ch//2, affine=affineBN))
-            layers.append(nn.ReLU(inplace=True))
-        layers.append(nn.Conv2d(in_ch//2, int(out_ch//mult), kernel_size=3,
-                      stride=stride, padding=1, bias=False))
-        layers.append(nn.BatchNorm2d(int(out_ch//mult), affine=affineBN))
-        layers.append(nn.ReLU(inplace=True))
-        layers.append(nn.Conv2d(int(out_ch//mult), int(out_ch//mult),
-                      kernel_size=3, padding=1, bias=False))
-        layers.append(nn.Dropout(p=dropout_rate))
-        layers.append(nn.BatchNorm2d(int(out_ch//mult), affine=affineBN))
-        layers.append(nn.ReLU(inplace=True))
-        layers.append(nn.Conv2d(int(out_ch//mult), out_ch, kernel_size=3,
-                      padding=1, bias=False))
-        self.bottleneck_block = nn.Sequential(*layers)
+class DownScale(Flow):
 
-    def forward(self, x):
-        """ bijective or injective block forward """
-        if self.pad != 0 and self.stride == 1:
-            x = merge(x[0], x[1])
-            x = self.inj_pad.forward(x)
-            x1, x2 = split(x)
-            x = (x1, x2)
-        x1 = x[0]
-        x2 = x[1]
-        Fx2 = self.bottleneck_block(x2)
-        if self.stride == 2:
-            x1 = self.psi.forward(x1)
-            x2 = self.psi.forward(x2)
-        y1 = Fx2 + x1
-        return (x2, y1)
-
-    def inverse(self, x):
-        """ bijective or injecitve block inverse """
-        x2, y1 = x[0], x[1]
-        if self.stride == 2:
-            x2 = self.psi.inverse(x2)
-        Fx2 = - self.bottleneck_block(x2)
-        x1 = Fx2 + y1
-        if self.stride == 2:
-            x1 = self.psi.inverse(x1)
-        if self.pad != 0 and self.stride == 1:
-            x = merge(x1, x2)
-            x = self.inj_pad.inverse(x)
-            x1, x2 = split(x)
-            x = (x1, x2)
-        else:
-            x = (x1, x2)
-        return x
-
-
-class iRevNet(nn.Module):
-    def __init__(self, nBlocks, nStrides, nClasses, nChannels=None, init_ds=2,
-                 dropout_rate=0., affineBN=True, in_shape=None, mult=4):
-        super(iRevNet, self).__init__()
-        self.ds = in_shape[2]//2**(nStrides.count(2)+init_ds//2)
-        self.init_ds = init_ds
-        self.in_ch = in_shape[0] * 2**self.init_ds
-        self.nBlocks = nBlocks
-        self.first = True
-
-        print('')
-        print(' == Building iRevNet %d == ' % (sum(nBlocks) * 3 + 1))
-        if not nChannels:
-            nChannels = [self.in_ch//2, self.in_ch//2 * 4,
-                         self.in_ch//2 * 4**2, self.in_ch//2 * 4**3]
-
-        self.init_psi = psi(self.init_ds)
-        self.stack = self.irevnet_stack(irevnet_block, nChannels, nBlocks,
-                                        nStrides, dropout_rate=dropout_rate,
-                                        affineBN=affineBN, in_ch=self.in_ch,
-                                        mult=mult)
-        self.bn1 = nn.BatchNorm2d(nChannels[-1]*2, momentum=0.9)
-        self.linear = nn.Linear(nChannels[-1]*2, nClasses)
-
-    def irevnet_stack(self, _block, nChannels, nBlocks, nStrides, dropout_rate,
-                      affineBN, in_ch, mult):
-        """ Create stack of irevnet blocks """
-        block_list = nn.ModuleList()
-        strides = []
-        channels = []
-        for channel, depth, stride in zip(nChannels, nBlocks, nStrides):
-            strides = strides + ([stride] + [1]*(depth-1))
-            channels = channels + ([channel]*depth)
-        for channel, stride in zip(channels, strides):
-            block_list.append(_block(in_ch, channel, stride,
-                                     first=self.first,
-                                     dropout_rate=dropout_rate,
-                                     affineBN=affineBN, mult=mult))
-            in_ch = 2 * channel
-            self.first = False
-        return block_list
-
-    def forward(self, x):
-        """ irevnet forward """
-        n = self.in_ch//2
-        if self.init_ds != 0:
-            x = self.init_psi.forward(x)
-        out = (x[:, :n, :, :], x[:, n:, :, :])
-        for block in self.stack:
-            out = block.forward(out)
-        out_bij = merge(out[0], out[1])
-        # out = F.relu(self.bn1(out_bij))
-        # out = F.avg_pool2d(out, self.ds)
-        # out = out.view(out.size(0), -1)
-        # out = self.linear(out)
-        # return out, out_bij
-        return out_bij
-
-    def inverse(self, out_bij):
-        """ irevnet inverse """
-        out = split(out_bij)
-        for i in range(len(self.stack)):
-            out = self.stack[-1-i].inverse(out)
-        out = merge(out[0],out[1])
-        if self.init_ds != 0:
-            x = self.init_psi.inverse(out)
-        else:
-            x = out
-        return x
-
-#############################################################3
-def split(x):
-    n = int(x.size()[1]/2)
-    x1 = x[:, :n, :, :].contiguous()
-    x2 = x[:, n:, :, :].contiguous()
-    return x1, x2
-
-
-def merge(x1, x2):
-    return torch.cat((x1, x2), 1)
-
-
-class injective_pad(nn.Module):
-    def __init__(self, pad_size):
-        super(injective_pad, self).__init__()
-        self.pad_size = pad_size
-        self.pad = nn.ZeroPad2d((0, 0, 0, pad_size))
-
-    def forward(self, x):
-        x = x.permute(0, 2, 1, 3)
-        x = self.pad(x)
-        return x.permute(0, 2, 1, 3)
-
-    def inverse(self, x):
-        return x[:, :x.size(1) - self.pad_size, :, :]
-
-
-class psi(nn.Module):
     def __init__(self, block_size):
-        super(psi, self).__init__()
+        super().__init__()
         self.block_size = block_size
         self.block_size_sq = block_size*block_size
 
-    def inverse(self, input):
+    def _forward_yes_logDetJ(self, x):
         bl, bl_sq = self.block_size, self.block_size_sq
-        bs, new_d, h, w = input.shape[0], input.shape[1] // bl_sq, input.shape[2], input.shape[3]
-        return input.reshape(bs, bl, bl, new_d, h, w).permute(0, 3, 4, 1, 5, 2).reshape(bs, new_d, h * bl, w * bl)
+        bs, d, new_h, new_w = x.shape[0], x.shape[1], x.shape[2] // bl, x.shape[3] // bl
+        z = x.reshape(bs, d, new_h, bl, new_w, bl).permute(0, 3, 5, 1, 2, 4).reshape(bs, d * bl_sq, new_h, new_w)
+        log_det = 0
+        return z, log_det
 
-    def forward(self, input):
+    def _forward_no_logDetJ(self, x):
         bl, bl_sq = self.block_size, self.block_size_sq
-        bs, d, new_h, new_w = input.shape[0], input.shape[1], input.shape[2] // bl, input.shape[3] // bl
-        return input.reshape(bs, d, new_h, bl, new_w, bl).permute(0, 3, 5, 1, 2, 4).reshape(bs, d * bl_sq, new_h, new_w)
+        bs, d, new_h, new_w = x.shape[0], x.shape[1], x.shape[2] // bl, x.shape[3] // bl
+        z = x.reshape(bs, d, new_h, bl, new_w, bl).permute(0, 3, 5, 1, 2, 4).reshape(bs, d * bl_sq, new_h, new_w)
+        return z
+    
+    def _inverse_yes_logDetJ(self, z):
+        bl, bl_sq = self.block_size, self.block_size_sq
+        bs, new_d, h, w = z.shape[0], z.shape[1] // bl_sq, z.shape[2], z.shape[3]
+        x = z.reshape(bs, bl, bl, new_d, h, w).permute(0, 3, 4, 1, 5, 2).reshape(bs, new_d, h * bl, w * bl)
+        log_det = 0
+        return x, log_det
+
+    def _inverse_no_logDetJ(self, z):
+        bl, bl_sq = self.block_size, self.block_size_sq
+        bs, new_d, h, w = z.shape[0], z.shape[1] // bl_sq, z.shape[2], z.shape[3]
+        x = z.reshape(bs, bl, bl, new_d, h, w).permute(0, 3, 4, 1, 5, 2).reshape(bs, new_d, h * bl, w * bl)
+        return x
+
+class UpScale(Flow):
+
+    def __init__(self, block_size):
+        super().__init__()
+        self.block_size = block_size
+        self.block_size_sq = block_size*block_size
+
+    def _forward_yes_logDetJ(self, x):
+        bl, bl_sq = self.block_size, self.block_size_sq
+        bs, new_d, h, w = x.shape[0], x.shape[1] // bl_sq, x.shape[2], x.shape[3]
+        z = x.reshape(bs, bl, bl, new_d, h, w).permute(0, 3, 4, 1, 5, 2).reshape(bs, new_d, h * bl, w * bl)
+        log_det = 0
+        return z, log_det
+
+    def _forward_no_logDetJ(self, x):
+        bl, bl_sq = self.block_size, self.block_size_sq
+        bs, new_d, h, w = x.shape[0], x.shape[1] // bl_sq, x.shape[2], x.shape[3]
+        z = x.reshape(bs, bl, bl, new_d, h, w).permute(0, 3, 4, 1, 5, 2).reshape(bs, new_d, h * bl, w * bl)
+        return z
+    
+    def _inverse_yes_logDetJ(self, z):
+        bl, bl_sq = self.block_size, self.block_size_sq
+        bs, d, new_h, new_w = z.shape[0], z.shape[1], z.shape[2] // bl, z.shape[3] // bl
+        x = z.reshape(bs, d, new_h, bl, new_w, bl).permute(0, 3, 5, 1, 2, 4).reshape(bs, d * bl_sq, new_h, new_w)
+        log_det = 0
+        return x, log_det
+
+    def _inverse_no_logDetJ(self, z):
+        bl, bl_sq = self.block_size, self.block_size_sq
+        bs, d, new_h, new_w = z.shape[0], z.shape[1], z.shape[2] // bl, z.shape[3] // bl
+        x = z.reshape(bs, d, new_h, bl, new_w, bl).permute(0, 3, 5, 1, 2, 4).reshape(bs, d * bl_sq, new_h, new_w)
+        return x
 
 
-class ListModule(object):
-    def __init__(self, module, prefix, *args):
-        self.module = module
-        self.prefix = prefix
-        self.num_module = 0
-        for new_module in args:
-            self.append(new_module)
+class ConvNetGenerator():
 
-    def append(self, new_module):
-        if not isinstance(new_module, nn.Module):
-            raise ValueError('Not a Module')
+    def __init__(self, in_channel, channels:list, kernels=3, batch_norm=True, activation=nn.ReLU, dropout_p=0):
+        self.in_channel = in_channel
+        self.channels = channels
+        self.batch_norm = batch_norm
+        self.activation = activation
+        self.dropout_p = dropout_p
+
+        if isinstance(kernels, int):
+            self.kernels = [kernels for _ in range(len(channels)+1)]
         else:
-            self.module.add_module(self.prefix + str(self.num_module), new_module)
-            self.num_module += 1
+            assert len(channels)+1 == len(kernels), "The length of kernels must be one greater than number of channels"
+            self.kernels = kernels
 
-    def __len__(self):
-        return self.num_module
+        self.paddings = [(kernel-1)//2 for kernel in self.kernels]
 
-    def __getitem__(self, i):
-        if i < 0 or i >= self.num_module:
-            raise IndexError('Out of bound')
-        return getattr(self.module, self.prefix + str(i))
+    def generate(self):
+        layers = []
+        channels = [int(self.in_channel)]+\
+                    self.channels + [int(self.in_channel)]
+
+        for i in range(len(channels)-1):
+            conv = nn.Conv2d(channels[i], channels[i+1], self.kernels[i], 
+                                    padding=self.paddings[i], bias=not self.batch_norm)
+            layers.append(conv)
+            if self.batch_norm:
+                bn = nn.BatchNorm2d(channels[i+1])
+                layers.append(bn)
+            if self.dropout_p > 0:
+                dropout = nn.Dropout(p=self.dropout_p)
+                layers.append(dropout)
+            layers.append(self.activation())
+            
+        layers = layers[:-1]
+        layers = nn.Sequential(*layers)
+        return layers
 
 
-def get_all_params(var, all_params):
-    if isinstance(var, Parameter):
-        all_params[id(var)] = var.nelement()
-    elif hasattr(var, "creator") and var.creator is not None:
-        if var.creator.previous_functions is not None:
-            for j in var.creator.previous_functions:
-                get_all_params(j[0], all_params)
-    elif hasattr(var, "previous_functions"):
-        for j in var.previous_functions:
-            get_all_params(j[0], all_params)
 
-#############################################################3
+
+
+class iRevNet(Flow):
+    def __init__(self,sample_dim, func_generator, sample_ratio=1):
+        super().__init__()
+        self.dim = func_generator.in_channels
+        self.sample_ratio = sample_ratio
+
+        if self.sample_ratio > 1:
+            self.layers.append(UpScale(int(self.sample_ratio)))
+        elif self.sample_ratio < 1:
+            self.layers.append(DownScale(int(1/self.sample_ratio)))
+
+        # self.parity = parity
+        if sample_dim == 0:
+            self.input_index = torch.LongTensor(list(range(self.dim))[::2])
+            self.modif_index = torch.LongTensor(list(range(self.dim))[1::2])
+        elif sample_dim == 1: ## opposite
+            self.input_index = torch.LongTensor(list(range(self.dim))[1::2])
+            self.modif_index = torch.LongTensor(list(range(self.dim))[::2])
+        elif isinstance(sample_dim, DimensionMixer):
+            self.input_index, self.modif_index = sample_dim.get_input_and_modify_index()
+
+        self.t_cond = func_generator.generate()
+        
+    def _forward_yes_logDetJ(self, x):
+        # x0, x1 = x[:,::2], x[:,1::2]
+        # if self.parity:
+        #     x0, x1 = x1, x0
+        x0, x1 = x[:,self.input_index], x[:,self.modif_index]
+        
+        s = self.s_cond(x0)
+        t = self.t_cond(x0)
+        # z0 = x0 # untouched half
+        z1 = torch.exp(s) * x1 + t # transform this half as a function of the other
+        # if self.parity:
+        #     z0, z1 = z1, z0
+        # z = torch.cat([z0, z1], dim=1)
+        z = torch.empty_like(x)
+        z[:, self.input_index] = x0
+        z[:, self.modif_index] = z1
+
+        log_det = torch.sum(s, dim=1)
+        return z, log_det
+
+    def _forward_no_logDetJ(self, x):
+        # x0, x1 = x[:,::2], x[:,1::2]
+        # if self.parity:
+        #     x0, x1 = x1, x0
+        x0, x1 = x[:,self.input_index], x[:,self.modif_index]
+        
+        s = self.s_cond(x0)
+        t = self.t_cond(x0)
+        # z0 = x0 # untouched half
+        z1 = torch.exp(s) * x1 + t # transform this half as a function of the other
+        # if self.parity:
+        #     z0, z1 = z1, z0
+        # z = torch.cat([z0, z1], dim=1)
+
+        z = torch.empty_like(x)
+        z[:, self.input_index] = x0
+        z[:, self.modif_index] = z1
+
+        return z
+    
+    def _inverse_yes_logDetJ(self, z):
+        # z0, z1 = z[:,::2], z[:,1::2]
+        # if self.parity:
+        #     z0, z1 = z1, z0
+        z0, z1 = z[:,self.input_index], z[:,self.modif_index]
+        
+        s = self.s_cond(z0)
+        t = self.t_cond(z0)
+        # x0 = z0 # this was the same
+        x1 = (z1 - t) * torch.exp(-s) # reverse the transform on this half
+        # if self.parity:
+        #     x0, x1 = x1, x0
+        # x = torch.cat([x0, x1], dim=1)
+
+        x = torch.empty_like(z)
+        x[:, self.input_index] = z0
+        x[:, self.modif_index] = x1
+
+        log_det = torch.sum(-s, dim=1)
+        return x, log_det
+
+    def _inverse_no_logDetJ(self, z):
+        # z0, z1 = z[:,::2], z[:,1::2]
+        # if self.parity:
+        #     z0, z1 = z1, z0
+
+        z0, z1 = z[:,self.input_index], z[:,self.modif_index]
+
+        s = self.s_cond(z0)
+        t = self.t_cond(z0)
+        # x0 = z0 # this was the same
+        x1 = (z1 - t) * torch.exp(-s) # reverse the transform on this half
+        # if self.parity:
+        #     x0, x1 = x1, x0
+        # x = torch.cat([x0, x1], dim=1)
+        x = torch.empty_like(z)
+        x[:, self.input_index] = z0
+        x[:, self.modif_index] = x1
+
+        return x
+
 
 if __name__ == '__main__':
-    model = iRevNet(nBlocks=[6, 16, 72, 6], nStrides=[2, 2, 2, 2],
-                    nChannels=[24, 96, 384, 1536], nClasses=1000, init_ds=2,
-                    dropout_rate=0., affineBN=True, in_shape=[3, 224, 224],
-                    mult=4)
-    y, yi = model(Variable(torch.randn(1, 3, 224, 224)))
-    print(y.size(), yi.size())
+    cg = ConvNetGenerator(3, [16, 32])
+    cg.generate()
