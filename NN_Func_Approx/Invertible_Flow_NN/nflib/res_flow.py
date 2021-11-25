@@ -386,6 +386,7 @@ class ConvResidualFlow(Flow):
                 res, _j = b(res)
         y = x + res*self.scaler
         J = jacobian(y, x, True)
+        print("debug !! Computing jacobian, computationally expensive")
         return y, torch.det(J).abs().log()
 
     def _forward_no_logDetJ(self, x):
