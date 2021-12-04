@@ -9,7 +9,7 @@ __all__ = ['CifarResNet', 'cifar_resnet20', 'cifar_resnet32', 'cifar_resnet44', 
 
 
 ### shift normalized dists towards 0 for sparse activation with exponential
-class DistanceTransformExp(nn.Module):
+class DistanceTransform(nn.Module):
     
     def __init__(self, input_dim, num_centers, p=2, bias=True):
         super().__init__()
@@ -40,30 +40,30 @@ class DistanceTransformExp(nn.Module):
 
 
 ## bias to basic dist
-class DistanceTransform(nn.Module):
+# class DistanceTransform(nn.Module):
     
-    def __init__(self, input_dim, num_centers, p=2, bias=True):
-        super().__init__()
-        self.input_dim = input_dim
-        self.num_centers = num_centers
-        self.p = p
-        self.bias = nn.Parameter(torch.zeros(1, num_centers)) if bias else None
+#     def __init__(self, input_dim, num_centers, p=2, bias=True):
+#         super().__init__()
+#         self.input_dim = input_dim
+#         self.num_centers = num_centers
+#         self.p = p
+#         self.bias = nn.Parameter(torch.zeros(1, num_centers)) if bias else None
         
-        self.centers = torch.rand(num_centers, input_dim)
-        self.centers = nn.Parameter(self.centers)
+#         self.centers = torch.rand(num_centers, input_dim)
+#         self.centers = nn.Parameter(self.centers)
         
-    def forward(self, x):
-        x = x[:, :self.input_dim]
-        dists = torch.cdist(x, self.centers, p=self.p)
+#     def forward(self, x):
+#         x = x[:, :self.input_dim]
+#         dists = torch.cdist(x, self.centers, p=self.p)
         
-        ### normalize similar to UMAP
-#         dists = dists-dists.min(dim=1, keepdim=True)[0]
-#         dists = dists-dists.max(dim=1, keepdim=True)[0]
-        dists = dists-dists.mean(dim=1, keepdim=True)
-        dists = dists/dists.std(dim=1, keepdim=True)
+#         ### normalize similar to UMAP
+# #         dists = dists-dists.min(dim=1, keepdim=True)[0]
+# #         dists = dists-dists.max(dim=1, keepdim=True)[0]
+#         dists = dists-dists.mean(dim=1, keepdim=True)
+#         dists = dists/dists.std(dim=1, keepdim=True)
 
-        if self.bias is not None: dists = dists+self.bias
-        return dists
+#         if self.bias is not None: dists = dists+self.bias
+#         return dists
     
     
 class Conv2D_DT(nn.Module):
@@ -196,7 +196,6 @@ class CifarResNet(nn.Module):
         if transform == "distance":
             conv3x3 = conv3x3_distance
             conv1x1 = conv1x1_distance
-        if transform = "distance2":
             
         elif transform == "linear":
             conv3x3 = conv3x3_linear
