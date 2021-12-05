@@ -9,37 +9,6 @@ __all__ = ['CifarResNet', 'cifar_resnet20', 'cifar_resnet32', 'cifar_resnet44', 
 
 
 ### shift normalized dists towards 0 for sparse activation with exponential
-class DistanceTransform(nn.Module):
-    
-    def __init__(self, input_dim, num_centers, p=2, bias=True):
-        super().__init__()
-        self.input_dim = input_dim
-        self.num_centers = num_centers
-        self.p = p
-        
-#         self.centers = torch.randn(num_centers, input_dim)/2.
-        self.centers = torch.rand(num_centers, input_dim)
-        self.centers = nn.Parameter(self.centers)
-        
-        self.scaler = nn.Parameter(torch.ones(1, num_centers)*2/3)
-        self.bias = nn.Parameter(torch.ones(1, num_centers)*-0.1) if bias else None
-        
-    def forward(self, x):
-#         x = x[:, :self.input_dim]
-        dists = torch.cdist(x, self.centers)
-        
-        ### normalize similar to UMAP
-#         dists = dists-dists.min(dim=1, keepdim=True)[0]
-        dists = dists-dists.mean(dim=1, keepdim=True)
-        dists = dists/dists.std(dim=1, keepdim=True)
-
-        dists = torch.exp((-dists-3)*self.scaler)
-        if self.bias is not None: dists = dists+self.bias
-        return dists
-
-
-
-## bias to basic dist
 # class DistanceTransform(nn.Module):
     
 #     def __init__(self, input_dim, num_centers, p=2, bias=True):
@@ -47,23 +16,54 @@ class DistanceTransform(nn.Module):
 #         self.input_dim = input_dim
 #         self.num_centers = num_centers
 #         self.p = p
-#         self.bias = nn.Parameter(torch.zeros(1, num_centers)) if bias else None
         
+# #         self.centers = torch.randn(num_centers, input_dim)/2.
 #         self.centers = torch.rand(num_centers, input_dim)
 #         self.centers = nn.Parameter(self.centers)
         
+#         self.scaler = nn.Parameter(torch.ones(1, num_centers)*2/3)
+#         self.bias = nn.Parameter(torch.ones(1, num_centers)*-0.1) if bias else None
+        
 #     def forward(self, x):
-#         x = x[:, :self.input_dim]
-#         dists = torch.cdist(x, self.centers, p=self.p)
+# #         x = x[:, :self.input_dim]
+#         dists = torch.cdist(x, self.centers)
         
 #         ### normalize similar to UMAP
 # #         dists = dists-dists.min(dim=1, keepdim=True)[0]
-# #         dists = dists-dists.max(dim=1, keepdim=True)[0]
 #         dists = dists-dists.mean(dim=1, keepdim=True)
 #         dists = dists/dists.std(dim=1, keepdim=True)
 
+#         dists = torch.exp((-dists-3)*self.scaler)
 #         if self.bias is not None: dists = dists+self.bias
 #         return dists
+
+
+
+## bias to basic dist
+class DistanceTransform(nn.Module):
+    
+    def __init__(self, input_dim, num_centers, p=2, bias=True):
+        super().__init__()
+        self.input_dim = input_dim
+        self.num_centers = num_centers
+        self.p = p
+        self.bias = nn.Parameter(torch.zeros(1, num_centers)) if bias else None
+        
+        self.centers = torch.rand(num_centers, input_dim)
+        self.centers = nn.Parameter(self.centers)
+        
+    def forward(self, x):
+        x = x[:, :self.input_dim]
+        dists = torch.cdist(x, self.centers, p=self.p)
+        
+        ### normalize similar to UMAP
+#         dists = dists-dists.min(dim=1, keepdim=True)[0]
+#         dists = dists-dists.max(dim=1, keepdim=True)[0]
+#         dists = dists-dists.mean(dim=1, keepdim=True)
+#         dists = dists/dists.std(dim=1, keepdim=True)
+
+        if self.bias is not None: dists = dists+self.bias
+        return dists
     
     
 class Conv2D_DT(nn.Module):
