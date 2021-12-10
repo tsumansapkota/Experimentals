@@ -44,6 +44,7 @@ class DistanceTransform(nn.Module):
     
     def __init__(self, input_dim, num_centers, p=2, bias=True):
         super().__init__()
+        bias=False
         self.input_dim = input_dim
         self.num_centers = num_centers
         self.p = p
@@ -53,14 +54,14 @@ class DistanceTransform(nn.Module):
         self.centers = nn.Parameter(self.centers)
         
     def forward(self, x):
-        x = x[:, :self.input_dim]
+#         x = x[:, :self.input_dim]
         dists = torch.cdist(x, self.centers, p=self.p)
         
         ### normalize similar to UMAP
 #         dists = dists-dists.min(dim=1, keepdim=True)[0]
 #         dists = dists-dists.max(dim=1, keepdim=True)[0]
-#         dists = dists-dists.mean(dim=1, keepdim=True)
-#         dists = dists/dists.std(dim=1, keepdim=True)
+        dists = dists-dists.mean(dim=1, keepdim=True)
+        dists = dists/dists.std(dim=1, keepdim=True)
 
         if self.bias is not None: dists = dists+self.bias
         return dists
@@ -130,6 +131,19 @@ class ScaleShift(nn.Module):
     def forward(self, x):
         return x*self.scaler+self.shifter
 
+    
+
+class ChannelNorm2D(nn.Module):
+    
+    def __init__(self, eps=1e-5):
+        super().__init__()
+        self.eps = eps
+        
+    def forward(self, x):
+        x = x-x.mean(dim=1, keepdim=True)
+        x = x/torch.sqrt(x.var(dim=1, keepdim=True)+self.eps)
+        return x
+    
 
 def conv3x3_linear(in_planes, out_planes, stride=1):
     """3x3 convolution with padding"""
@@ -139,6 +153,21 @@ def conv3x3_linear(in_planes, out_planes, stride=1):
 def conv1x1_linear(in_planes, out_planes, stride=1):
     """1x1 convolution"""
     return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
+
+
+def conv3x3_linear2(in_planes, out_planes, stride=1):
+    """3x3 convolution with padding"""
+    return nn.Sequential(
+        nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=1, bias=False),
+        ChannelNorm2D()
+    )
+
+def conv1x1_linear2(in_planes, out_planes, stride=1):
+    """1x1 convolution"""
+    return nn.Sequential(
+        nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False),
+        ChannelNorm2D()
+    )
 
 def conv3x3_distance(in_planes, out_planes, stride=1):
     """3x3 convolution with padding"""
@@ -200,6 +229,9 @@ class CifarResNet(nn.Module):
         elif transform == "linear":
             conv3x3 = conv3x3_linear
             conv1x1 = conv1x1_linear
+        elif transform == "linear2":
+            conv3x3 = conv3x3_linear2
+            conv1x1 = conv1x1_linear2
         else:
             raise ValueError("transform could not be identified")
         
@@ -214,8 +246,13 @@ class CifarResNet(nn.Module):
 
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         
-        if transform != "linear":
+        if transform == "linear":
             self.fc = nn.Linear(64 * block.expansion, num_classes)
+        elif transform == "linear2":
+            self.fc = nn.Sequential(
+                nn.Linear(64 * block.expansion, num_classes),
+                nn.LayerNorm(num_classes)
+            )
         else:
             self.fc = nn.Sequential(
                 DistanceTransform(64 * block.expansion, num_classes),
