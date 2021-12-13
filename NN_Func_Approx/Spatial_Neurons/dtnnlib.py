@@ -38,6 +38,148 @@ __all__ = ['CifarResNet', 'cifar_resnet20', 'cifar_resnet32', 'cifar_resnet44', 
 #         return dists
 
 
+class DistanceTransformBase(nn.Module):
+    
+    def __init__(self, input_dim, num_centers, p=2):
+        super().__init__()
+        self.input_dim = input_dim
+        self.num_centers = num_centers
+        self.p = p
+        
+        self.centers = torch.randn(num_centers, input_dim)/3.
+#         self.centers = torch.rand(num_centers, input_dim)
+        self.centers = nn.Parameter(self.centers)
+    
+    def forward(self, x):
+        dists = torch.cdist(x, self.centers, p=self.p)
+        
+        ### normalize similar to UMAP
+#         dists = dists-dists.min(dim=1, keepdim=True)[0]
+#         dists = dists-dists.mean(dim=1, keepdim=True)
+#         dists = dists/dists.std(dim=1, keepdim=True)
+
+        return dists
+    
+    def set_centroid_to_data_randomly(self, data_loader):
+        indices = np.random.permutation(len(data_loader.dataset.data))[:self.centers.shape[0]]
+        self.centers.data = data_loader.dataset.data[indices].to(self.centers.device)
+        pass
+    
+    def set_centroid_to_data_maxdist(self, data_loader):
+        ## sample N points
+        N = self.centers.shape[0]
+        new_center = torch.empty_like(self.centers)
+        min_dists = torch.empty(N)
+        count = 0
+        for i, (xx, _) in enumerate(tqdm(data_loader)):
+            if count < N:
+                if N-count < batch_size:
+                    #### final fillup
+                    new_center[count:count+N-count] = xx[:N-count]
+                    xx = xx[N-count:]
+                    dists = torch.cdist(new_center, new_center)+torch.eye(N)*1e5
+                    min_dists = dists.min(dim=0)[0]
+                    count = N
+
+                else:#### fill the center
+                    new_center[count:count+len(xx)] = xx
+                    count += len(xx)
+                    continue
+
+            ammd = min_dists.argmin()
+            for i, x in enumerate(xx):
+                dists = torch.norm(new_center-x, dim=1)
+                md = dists.min()
+                if md > min_dists[ammd]:
+                    min_dists[ammd] = md
+                    new_center[ammd] = x
+                    ammd = min_dists.argmin()
+        self.centers.data = new_center.to(self.centers.device)
+        pass
+        
+    
+    def set_centroid_to_data(self, data_loader):
+        new_center = self.centers.data.clone()
+        min_dists = torch.ones(self.centers.shape[0])*1e9
+
+        for xx, _ in data_loader:
+
+            dists = torch.cdist(xx, self.centers.data)
+            ### min dist of each center to the data points
+            min_d, arg_md = dists.min(dim=0)
+
+            ### dont allow same point to be assigned as closest to multiple centroid
+            occupied = []
+            for i in np.random.permutation(len(arg_md)):
+        #     for i, ind in enumerate(arg_md):
+                ind = arg_md[i]
+                if ind in occupied:
+                    min_d[i] = min_dists[i]
+                    arg_md[i] = -1
+                else:
+                    occupied.append(ind)
+
+            ### the index of centroids that have new min_dist
+            idx = torch.nonzero(min_d<min_dists).reshape(-1)
+
+            ### assign new_center to the nearest data point
+            new_center[idx] = xx[arg_md[idx]]
+            min_dists[idx] = min_d[idx]
+            
+        self.centers.data = new_center.to(self.centers.device)
+        pass
+
+### shift normalized dists towards 0 for sparse activation with exponential
+class DistanceTransform_Exp(DistanceTransformBase):
+    
+    def __init__(self, input_dim, num_centers, p=2, bias=False, eps=1e-5):
+        super().__init__(input_dim, num_centers, p=2)
+        
+        self.scaler = nn.Parameter(torch.ones(1, num_centers)*3/3)
+#         self.bias = nn.Parameter(torch.ones(1, num_centers)*-0.1) if bias else None
+        self.bias = nn.Parameter(torch.ones(1, num_centers)*0) if bias else None
+        self.eps = eps
+        
+    def forward(self, x):
+        dists = super().forward(x)
+        
+        ### normalize similar to UMAP
+#         dists = dists-dists.min(dim=1, keepdim=True)[0]
+        dists = dists-dists.mean(dim=1, keepdim=True)
+        dists = dists/torch.sqrt(dists.var(dim=1, keepdim=True)+self.eps)
+#         a = ((-dists-2)*self.scaler).data.cpu().numpy()
+#         print(a.mean(), a.std(), a.min(), a.max())
+        dists = torch.exp((-dists-2)*self.scaler)
+#         dists = torch.softmax((-dists-3)*self.scaler, dim=1)
+        if self.bias is not None: dists = dists+self.bias
+        return dists
+
+
+### shift normalized dists towards 0 for sparse activation with exponential
+class DistanceTransform_MinExp(DistanceTransformBase):
+    
+    def __init__(self, input_dim, num_centers, p=2, bias=False, eps=1e-5):
+        super().__init__(input_dim, num_centers, p=2)
+        
+        self.scaler = nn.Parameter(torch.ones(1, num_centers)*6/3)
+        self.scaler.requires_grad = False
+#         self.bias = nn.Parameter(torch.ones(1, num_centers)*-0.1) if bias else None
+        self.bias = nn.Parameter(torch.ones(1, num_centers)*0) if bias else None
+        self.eps = eps
+        
+    def forward(self, x):
+        dists = super().forward(x)
+        
+        ### normalize similar to UMAP
+        dists = dists-dists.min(dim=1, keepdim=True)[0]
+#         dists = dists-dists.mean(dim=1, keepdim=True)
+        dists = dists/torch.sqrt(dists.var(dim=1, keepdim=True)+self.eps)
+
+        dists = torch.exp(-dists*self.scaler)
+#         dists = torch.softmax(-dists*self.scaler, dim=1)
+        if self.bias is not None: dists = dists+self.bias
+        return dists
+    
 
 ## bias to basic dist
 class DistanceTransform(nn.Module):
