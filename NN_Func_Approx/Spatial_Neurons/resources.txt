@@ -1,0 +1,5 @@
+https://github.com/SKvtun/ParametricUMAP-Pytorch
+
+https://github.com/timsainb/ParametricUMAP_paper
+
+https://arxiv.org/pdf/1910.02776.pdf  --> Biologically Inspired Neural Networks
