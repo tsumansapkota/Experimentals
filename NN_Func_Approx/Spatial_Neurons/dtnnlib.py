@@ -182,6 +182,86 @@ class DistanceTransform_MinExp(DistanceTransformBase):
         return dists
     
 
+class StereographicTransform(nn.Module):
+    
+    def __init__(self, input_dim, output_dim, bias=True, normalize=False):
+        super().__init__()
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.normalize = normalize
+        self.inp_scaler = nn.Parameter(torch.Tensor([1/np.sqrt(self.input_dim)]))
+        self.linear = nn.Linear(input_dim, output_dim, bias=bias)
+        ### stereographic transform the linear layer weights
+        x = self.linear.weight.data*self.inp_scaler.data
+        sqnorm = (x**2).sum(dim=1, keepdim=True) ## l2 norm squared
+        x = x*2/(sqnorm+1)
+        new_dim = (sqnorm-1)/(sqnorm+1)
+        x = torch.cat((x, new_dim), dim=1)
+        self.linear.weight.data = x
+        print(x.shape)
+
+    ## https://github.com/pswkiki/SphereGAN/blob/master/model_sphere_gan.py
+    def forward(self, x):
+        if self.normalize:
+            self.linear.weight.data /= self.linear.weight.data.norm(p=2, dim=1, keepdim=True)
+        ### linear has weight -> (outdim, indim) format, so normalizing per output dimension
+#         print(self.linear.weight.data.norm(dim=1))
+        
+        x = x*self.inp_scaler
+        sqnorm = (x**2).sum(dim=1, keepdim=True) ## l2 norm squared
+        x = x*2/(sqnorm+1)
+        new_dim = (sqnorm-1)/(sqnorm+1)
+        x = torch.cat((x, new_dim), dim=1)
+        x = self.linear(x)
+        return x
+
+### Activation function for Stereographic Transform
+class OneActiv(nn.Module):
+    '''
+    Mode:
+    -softplus : default
+    -relu
+    -exp_1.6
+    -exp_abs
+    '''
+    def __init__(self, input_dim, mode='softplus', beta_init=0):
+        super().__init__()
+        self.input_dim = input_dim
+        self.beta = nn.Parameter(torch.ones(1, input_dim)*beta_init)
+        self.func_mode = None
+        if mode == "softplus":
+            self.func_mode = self.func_softplus
+        elif mode == "exp_1.6":
+            self.func_mode = self.func_exp_16
+        elif mode == "exp_abs":
+            self.func_mode = self.func_exp_abs
+        elif mode == 'relu':
+            self.func_mode = self.func_relu
+        else:
+            raise ValueError(f"mode: {mode} not recognized")
+        pass
+        
+    def func_softplus(self, x):
+        x = torch.exp(self.beta)*(x-1) + 1
+        x = nn.functional.softplus(x, beta=6)
+        return x
+    
+    def func_relu(self, x):
+        x = torch.exp(self.beta)*(x-1) + 1
+        x = torch.relu(x)
+        return x
+    
+    def func_exp_16(self, x):
+        x = torch.exp(-torch.exp(2*self.beta)*(torch.abs(x-1)**1.6))
+        return x
+        
+    def func_exp_abs(self, x):
+        x = torch.exp(-torch.exp(2*self.beta)*torch.abs(x-1))
+        return x
+    
+    def forward(self, x):
+        return self.func_mode(x)
+    
 ## bias to basic dist
 class DistanceTransform(nn.Module):
     
@@ -222,33 +302,33 @@ class EMA(object):
         return self.mu
     
 ## exponentially moving mean (and/or var) to basic dist
-# class DistanceTransformEMA(nn.Module):
+class DistanceTransformEMA(nn.Module):
     
-#     def __init__(self, input_dim, num_centers, p=2, bias=True):
-#         super().__init__()
-#         bias=False
-#         self.input_dim = input_dim
-#         self.num_centers = num_centers
-#         self.p = p
-#         self.bias = nn.Parameter(torch.zeros(1, num_centers)) if bias else None
+    def __init__(self, input_dim, num_centers, p=2, bias=True):
+        super().__init__()
+        bias=False
+        self.input_dim = input_dim
+        self.num_centers = num_centers
+        self.p = p
+        self.bias = nn.Parameter(torch.zeros(1, num_centers)) if bias else None
         
-#         self.centers = torch.rand(num_centers, input_dim)
-#         self.centers = nn.Parameter(self.centers)
+        self.centers = torch.rand(num_centers, input_dim)
+        self.centers = nn.Parameter(self.centers)
         
-#         self.std = EMA()
+        self.std = EMA()
+        self.mean = EMA()
         
-#     def forward(self, x):
-# #         x = x[:, :self.input_dim]
-#         dists = torch.cdist(x, self.centers, p=self.p)
+    def forward(self, x):
+#         x = x[:, :self.input_dim]
+        dists = torch.cdist(x, self.centers, p=self.p)
         
-#         ### normalize similar to UMAP
-# #         dists = dists-dists.min(dim=1, keepdim=True)[0]
-# #         dists = dists-dists.max(dim=1, keepdim=True)[0]
-#         dists = dists-dists.mean(dim=1, keepdim=True)
-#         dists = dists/dists.std(dim=1, keepdim=True)
+        ### normalize similar to UMAP
+        mean = self.mean(dists.mean(dim=1, keepdim=True))
+        std = self.std(torch.sqrt(dists.var(dim=1, keepdim=True)+1e-5))
+        dists = (dists-mean)/std
 
-#         if self.bias is not None: dists = dists+self.bias
-#         return dists
+        if self.bias is not None: dists = dists+self.bias
+        return dists
     
     
 class Conv2D_DT(nn.Module):
