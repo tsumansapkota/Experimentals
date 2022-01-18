@@ -192,13 +192,12 @@ class StereographicTransform(nn.Module):
         self.inp_scaler = nn.Parameter(torch.Tensor([1/np.sqrt(self.input_dim)]))
         self.linear = nn.Linear(input_dim, output_dim, bias=bias)
         ### stereographic transform the linear layer weights
-        x = self.linear.weight.data*self.inp_scaler.data
-        sqnorm = (x**2).sum(dim=1, keepdim=True) ## l2 norm squared
-        x = x*2/(sqnorm+1)
-        new_dim = (sqnorm-1)/(sqnorm+1)
-        x = torch.cat((x, new_dim), dim=1)
-        self.linear.weight.data = x
-        print(x.shape)
+#         x = self.linear.weight.data*self.inp_scaler.data
+#         sqnorm = (x**2).sum(dim=1, keepdim=True) ## l2 norm squared
+#         x = x*2/(sqnorm+1)
+#         new_dim = (sqnorm-1)/(sqnorm+1)
+#         x = torch.cat((x, new_dim), dim=1)
+#         self.linear.weight.data = x
 
     ## https://github.com/pswkiki/SphereGAN/blob/master/model_sphere_gan.py
     def forward(self, x):
