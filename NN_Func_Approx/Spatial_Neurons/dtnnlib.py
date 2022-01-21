@@ -190,7 +190,9 @@ class StereographicTransform(nn.Module):
         self.output_dim = output_dim
         self.normalize = normalize
         self.inp_scaler = nn.Parameter(torch.Tensor([1/np.sqrt(self.input_dim)]))
-        self.linear = nn.Linear(input_dim, output_dim, bias=bias)
+        self.linear = nn.Linear(input_dim+1, output_dim, bias=bias)
+        
+        self.linear.weight.data /= self.linear.weight.data.norm(p=2, dim=1, keepdim=True)
         ### stereographic transform the linear layer weights
 #         x = self.linear.weight.data*self.inp_scaler.data
 #         sqnorm = (x**2).sum(dim=1, keepdim=True) ## l2 norm squared
@@ -322,8 +324,8 @@ class DistanceTransformEMA(nn.Module):
         dists = torch.cdist(x, self.centers, p=self.p)
         
         ### normalize similar to UMAP
-        mean = self.mean(dists.mean(dim=1, keepdim=True))
-        std = self.std(torch.sqrt(dists.var(dim=1, keepdim=True)+1e-5))
+        mean = self.mean(dists.data.mean(dim=1, keepdim=True).data)
+        std = self.std(torch.sqrt(dists.data.var(dim=1, keepdim=True)+1e-5))
         dists = (dists-mean)/std
 
         if self.bias is not None: dists = dists+self.bias
