@@ -363,7 +363,7 @@ class ConvResidualFlow(Flow):
         layers = layers[:-1]
         self.resblock = nn.ModuleList(layers)
         self.scaler = scaler
-        self._update_spectral_norm_init()
+        self._update_spectral_norm_init(1)
 
     def forward(self, x, logDetJ:bool=False):
         if self.reverse:
@@ -410,13 +410,60 @@ class ConvResidualFlow(Flow):
         return x
     
 
-    def _update_spectral_norm_init(self):
+    def _update_spectral_norm_init(self, N=10):
         ### update spectral norm layer for some steps.
         with torch.no_grad():
-            for _ in range(10):
+            for _ in range(N):
                 _a = torch.randn(1, self.in_channel, 256, 256)
                 for i, b in enumerate(self.resblock):
                     if i%2==0: ### if conv layer
                         _a = b(_a)
                     else: ### if activation function
                         _a, _ = b(_a)
+
+
+
+class InvertiblePooling(Flow):
+    def __init__(self, block_size=2):
+        super().__init__()
+        self.block_size = block_size
+        self.block_size_sq = block_size*block_size
+
+    def _forward_yes_logDetJ(self, x):
+        ### x -> [N, C, H, W]
+        bl, bl_sq = self.block_size, self.block_size_sq
+        bs, d, new_h, new_w = x.shape[0], x.shape[1], x.shape[2] // bl, x.shape[3] // bl
+        y = x.reshape(bs, d, new_h, bl, new_w, bl).permute(0, 3, 5, 1, 2, 4).reshape(bs, d * bl_sq, new_h, new_w)
+        return y, 0
+
+    def _forward_no_logDetJ(self, x):
+        return self._forward_yes_logDetJ(x)[0]
+
+    def _inverse_yes_logDetJ(self, y):
+        bl, bl_sq = self.block_size, self.block_size_sq
+        bs, new_d, h, w = y.shape[0], y.shape[1] // bl_sq, y.shape[2], y.shape[3]
+        x = y.reshape(bs, bl, bl, new_d, h, w).permute(0, 3, 4, 1, 5, 2).reshape(bs, new_d, h * bl, w * bl)
+        return x, 0
+
+    def _inverse_no_logDetJ(self, y):
+        return self._inverse_yes_logDetJ(y)[0]
+
+
+class Flatten(Flow):
+    def __init__(self, img_size):
+        super().__init__()
+        self.img_size = img_size
+
+    def _forward_yes_logDetJ(self, x):
+        y = x.reshape(-1, self.img_size[0]*self.img_size[1]*self.img_size[2])
+        return y, 0
+
+    def _forward_no_logDetJ(self, x):
+        return self._forward_yes_logDetJ(x)[0]
+
+    def _inverse_yes_logDetJ(self, y):
+        x = y.reshape(-1, *self.img_size)
+        return x, 0
+
+    def _inverse_no_logDetJ(self, y):
+        return self._inverse_yes_logDetJ(y)[0]
