@@ -39,7 +39,7 @@ class TanhLU(nn.Module):
 
 class Swish(nn.Module):
 
-    def __init__(self, beta=0.8):
+    def __init__(self, beta=2.5): #beta=0.8
         super().__init__()
         self.beta = nn.Parameter(torch.Tensor([beta]))
 
