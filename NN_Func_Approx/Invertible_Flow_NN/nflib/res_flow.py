@@ -250,7 +250,7 @@ class ResidualFlow(Flow):
             resblock.append(actf)
         self.resblock = nn.ModuleList(resblock[:-1])
         self.scaler = scaler
-        self._update_spectral_norm_init()
+        # self._update_spectral_norm_init()
 
     def forward(self, x, logDetJ:bool=False):
         if self.reverse:
@@ -363,7 +363,7 @@ class ConvResidualFlow(Flow):
         layers = layers[:-1]
         self.resblock = nn.ModuleList(layers)
         self.scaler = scaler
-        self._update_spectral_norm_init(1)
+        # self._update_spectral_norm_init(1)
 
     def forward(self, x, logDetJ:bool=False):
         if self.reverse:
