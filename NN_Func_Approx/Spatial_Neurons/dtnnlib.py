@@ -292,7 +292,7 @@ class DistanceTransform(nn.Module):
     
 class EMA(object):
 
-    def __init__(self, momentum=0.1, mu=None):
+    def __init__(self, momentum=0.9, mu=None):
         self.mu = mu
         self.momentum = momentum
 
