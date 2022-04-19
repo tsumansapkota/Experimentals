@@ -12,6 +12,11 @@ std::vector<torch::Tensor> bmm2x2_cuda_backward(
     torch::Tensor grad_output,
     torch::Tensor input,
     torch::Tensor weights);
+  
+std::vector<torch::Tensor> bmm2x2_cuda_backward_v2(
+    torch::Tensor grad_output,
+    torch::Tensor input,
+    torch::Tensor weights);
 
 // C++ interface
 
@@ -35,7 +40,7 @@ std::vector<torch::Tensor> bmm2x2_backward(
   CHECK_INPUT(weights);
   CHECK_INPUT(grad_output);
 
-  return bmm2x2_cuda_backward(input, weights, grad_output);
+  return bmm2x2_cuda_backward_v2(input, weights, grad_output);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
