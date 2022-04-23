@@ -1,6 +1,25 @@
 ## Experimentals
+### A rough research on Neural Networks and Machine Learning
 
-This repository is experiments done with various machine learning algorithm, mainly Neural Networks, Spline-Regression, Decision Teee, and many other experimental algorithms.
+This repository contains various jupyter notebooks on dissecting neural networks and tinkering with it to understand the inner workings. This repository contains the following topics:
 
-**The notebooks use libraries made from scratch : [mylibrary](https://github.com/tsumansapkota/mylibrary).**
+* Function approximation using various types of ANN architectures. ```(\NN_Func Approx\)```
+    1. Convex and Lipschitz constraint NN.
+    2. Soft Decision Trees
+    3. RBF and Neuron as Cluster + Regression.
+    4. Normalizing flows and Invertible Neural Networks
+    5. Invex function and Connected Set classifiers. 
+    6. Dimension Mixture Model
+    7. Spatial Neural Network
+    8. Dynamic Neural Network and NAS.
+    9. PCA and Autoencoders
+
+* Spline (and Piecewise) function approximators.
+* GANs and Gaussian Mixture Models.
+* Perceptron and Hebbs Learning Rule.
+* Neuron simulation with dynamic position.
+* ANN Optimization and Constraints.
+
+### Usage
+This collection jupter notebooks use general libraries like **numpy**, **matplotlib**, **pytorch** as well as **libraries made from scratch : [mylibrary](https://github.com/tsumansapkota/mylibrary).**
 
