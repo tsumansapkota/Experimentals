@@ -9,14 +9,14 @@ std::vector<torch::Tensor> bmm2x2_cuda_forward(
     torch::Tensor weights);
 
 std::vector<torch::Tensor> bmm2x2_cuda_backward(
-    torch::Tensor grad_output,
     torch::Tensor input,
-    torch::Tensor weights);
+    torch::Tensor weights,
+    torch::Tensor grad_output);
   
 std::vector<torch::Tensor> bmm2x2_cuda_backward_v2(
-    torch::Tensor grad_output,
     torch::Tensor input,
-    torch::Tensor weights);
+    torch::Tensor weights,
+    torch::Tensor grad_output);
 
 // C++ interface
 
@@ -40,10 +40,22 @@ std::vector<torch::Tensor> bmm2x2_backward(
   CHECK_INPUT(weights);
   CHECK_INPUT(grad_output);
 
+  return bmm2x2_cuda_backward(input, weights, grad_output);
+}
+
+std::vector<torch::Tensor> bmm2x2_backward_v2(
+    torch::Tensor input,
+    torch::Tensor weights,
+    torch::Tensor grad_output) {
+  CHECK_INPUT(input);
+  CHECK_INPUT(weights);
+  CHECK_INPUT(grad_output);
+
   return bmm2x2_cuda_backward_v2(input, weights, grad_output);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("forward", &bmm2x2_forward, "BMM2x2 forward (CUDA)");
   m.def("backward", &bmm2x2_backward, "BMM2x2 backward (CUDA)");
+  m.def("backward_v2", &bmm2x2_backward_v2, "BMM2x2 backward v2 (CUDA)");
 }

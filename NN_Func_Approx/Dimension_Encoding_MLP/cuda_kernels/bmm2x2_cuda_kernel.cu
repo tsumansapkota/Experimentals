@@ -319,7 +319,7 @@ std::vector<torch::Tensor> bmm2x2_cuda_backward(
                                 static_cast<double>(threads_per_block.y));
 
   auto del_input = torch::zeros_like(input);
-  auto del_weights = torch::zeros({s0, s1, 2, 2}, input.device());
+  auto del_weights = torch::empty({s0, s1, 2, 2}, input.device());
 
   AT_DISPATCH_FLOATING_TYPES(input.type(), "bmm2x2_backward_cuda", ([&] {
     bmm2x2_cuda_backward_kernel<scalar_t><<<blocks_per_grid, threads_per_block>>>(

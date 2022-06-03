@@ -9,6 +9,11 @@ setup(
         CUDAExtension('bmm2x2_cuda', [
             'bmm2x2_cuda.cpp',
             'bmm2x2_cuda_kernel.cu',
+        ]),
+
+        CUDAExtension('bilinear2x2_cuda', [
+            'bilinear2x2_cuda.cpp',
+            'bilinear2x2_cuda_kernel.cu',
         ])
     ],
     cmdclass={
