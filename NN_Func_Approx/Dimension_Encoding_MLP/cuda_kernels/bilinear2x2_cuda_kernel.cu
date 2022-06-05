@@ -29,8 +29,8 @@ __global__ void bilinear2x2_cuda_forward_kernel(
     }
 
     /// inputs (x,y) are calculated for range 0,1 globally...
-    scalar_t x = input[bi][gi][0]* (scalar_t)gx; // value on x grid
-    scalar_t y = input[bi][gi][1]* (scalar_t)gy; // value on y grid
+    scalar_t x = input[bi][gi][0]* (scalar_t)(gx-1); // value on x grid
+    scalar_t y = input[bi][gi][1]* (scalar_t)(gy-1); // value on y grid
 
     int ix = clamp<int>((int)x, 0, gx-2);  // index of x grid
     int iy = clamp<int>((int)y, 0, gy-2);  // index of y grid
@@ -112,8 +112,8 @@ __global__ void bilinear2x2_cuda_backward_kernel(
     }
 
     /// inputs (x,y) are calculated for range 0,1 globally...
-    scalar_t x = input[bi][gi][0]* (scalar_t)gx; // value on x grid
-    scalar_t y = input[bi][gi][1]* (scalar_t)gy; // value on y grid
+    scalar_t x = input[bi][gi][0]* (scalar_t)(gx-1); // value on x grid
+    scalar_t y = input[bi][gi][1]* (scalar_t)(gy-1); // value on y grid
 
     int ix = clamp<int>((int)x, 0, gx-2);  // index of x grid
     int iy = clamp<int>((int)y, 0, gy-2);  // index of y grid
@@ -152,8 +152,8 @@ __global__ void bilinear2x2_cuda_backward_kernel(
 
     del_input[bi][gi][0] += dy*(a10+y*a11);
     del_input[bi][gi][1] += dy*(a01+x*a11);
-    del_input[bi][gi][0] *= (scalar_t)gx; // correcting for the initial multiplication to gx
-    del_input[bi][gi][1] *= (scalar_t)gy;
+    del_input[bi][gi][0] *= (scalar_t)(gx-1); // correcting for the initial multiplication to gx
+    del_input[bi][gi][1] *= (scalar_t)(gy-1);
 
     da01 = dy*y;
     da10 = dy*x;
