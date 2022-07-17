@@ -29,3 +29,6 @@ var/
 .installed.cfg
 *.egg
 
+## Pytorch models
+*.pth
+*/*.pth
