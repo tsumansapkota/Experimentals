@@ -32,3 +32,5 @@ var/
 ## Pytorch models
 *.pth
 */*.pth
+
+NN_Func_Approx/Dimension_Encoding_MLP/Distributed_Dimension_Mixture_Model/output/
