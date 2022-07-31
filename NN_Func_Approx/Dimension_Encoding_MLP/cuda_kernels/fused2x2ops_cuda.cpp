@@ -6,11 +6,13 @@
 
 std::vector<torch::Tensor> fused_bilinear2x2_cuda_forward(
     torch::Tensor input,
-    torch::Tensor weights);
+    torch::Tensor weights,
+    torch::Tensor grids);
 
 std::vector<torch::Tensor> fused_bilinear2x2_cuda_backward(
-    torch::Tensor input,
+    torch::Tensor input_buffer,
     torch::Tensor weights,
+    torch::Tensor grids,
     torch::Tensor grad_output);
 
 // C++ interface
@@ -23,22 +25,24 @@ std::vector<torch::Tensor> fused_bilinear2x2_cuda_backward(
 std::vector<torch::Tensor> bilinear2x2_forward(
     torch::Tensor input,
     torch::Tensor weights,
-    torch::Tensor grid){
+    torch::Tensor grids){
   CHECK_INPUT(input);
   CHECK_INPUT(weights);
-  CHECK_INPUT(grid);
-  return fused_bilinear2x2_cuda_forward(input, weights, grid);
+  CHECK_INPUT(grids);
+  return fused_bilinear2x2_cuda_forward(input, weights, grids);
   }
 
 std::vector<torch::Tensor> bilinear2x2_backward(
-    torch::Tensor input,
+    torch::Tensor input_buffer,
     torch::Tensor weights,
+    torch::Tensor grids,
     torch::Tensor grad_output){
-  CHECK_INPUT(input);
+  CHECK_INPUT(input_buffer);
   CHECK_INPUT(weights);
+  CHECK_INPUT(grids);
   CHECK_INPUT(grad_output);
 
-  return fused_bilinear2x2_cuda_backward(input, weights, grad_output);
+  return fused_bilinear2x2_cuda_backward(input_buffer, weights, grids, grad_output);
 }
 
 

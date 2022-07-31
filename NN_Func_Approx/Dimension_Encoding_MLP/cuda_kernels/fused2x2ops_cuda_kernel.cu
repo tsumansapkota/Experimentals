@@ -15,10 +15,10 @@ __device__ inline scalar_t clamp(scalar_t d, scalar_t min, scalar_t max) {
 
 template <typename scalar_t>
 __global__ void bilinear2x2_cuda_forward_kernel(
-    torch::PackedTensorAccessor32<scalar_t,3,torch::RestrictPtrTraits> input, 
+    torch::PackedTensorAccessor32<scalar_t,2,torch::RestrictPtrTraits> input, 
     const torch::PackedTensorAccessor32<scalar_t,4,torch::RestrictPtrTraits> weights,
-    const torch::PackedTensorAccessor32<scalar_t,4,torch::RestrictPtrTraits> grids, 
-    torch::PackedTensorAccessor32<scalar_t,4,torch::RestrictPtrTraits> input_buffer, 
+    const torch::PackedTensorAccessor32<scalar_t,5,torch::RestrictPtrTraits> grids, 
+    torch::PackedTensorAccessor32<scalar_t,3,torch::RestrictPtrTraits> input_buffer, 
     size_t s0, size_t s1, size_t gx, size_t gy, size_t num_layers)
 {
     // Each thread computes one batch of 2x2 operation.
@@ -71,7 +71,7 @@ __global__ void bilinear2x2_cuda_forward_kernel(
       a00 = grids[layer_i][gi][1][ix][iy];
       a01 = grids[layer_i][gi][1][ix][iy+1] - a00;
       a10 = grids[layer_i][gi][1][ix+1][iy] - a00;
-      a11 = grids[layer_i][gi][1][ix+1][iy+1] - grids[gi][1][ix+1][iy] - a01;
+      a11 = grids[layer_i][gi][1][ix+1][iy+1] - grids[layer_i][gi][1][ix+1][iy] - a01;
 
       input[bi][gidy] = a00 + x*a10 + y*a01 + x*y*a11 ;
 
@@ -82,10 +82,10 @@ __global__ void bilinear2x2_cuda_forward_kernel(
 }
 
 /// here, we expect the tensor not to be transposed, but does same bmm
-std::vector<torch::Tensor> bilinear2x2_cuda_forward(
+std::vector<torch::Tensor> fused_bilinear2x2_cuda_forward(
     torch::Tensor input,
     torch::Tensor weights,
-    torch::Tensor grids,) {
+    torch::Tensor grids) {
 
   const auto s0 = input.size(0);
   const auto s1 = grids.size(1);
@@ -126,26 +126,15 @@ std::vector<torch::Tensor> bilinear2x2_cuda_forward(
 
 
 
-
-
-
-
-
-
-
-
-
-
-template <typename scalar_t> // mat1 is X, mat2 is W -> Y = X.W
+template <typename scalar_t>
 __global__ void bilinear2x2_cuda_backward_kernel(
-    const input_buffer.packed_accessor32<scalar_t,3,torch::RestrictPtrTraits>(),
-    const weights.packed_accessor32<scalar_t,4,torch::RestrictPtrTraits>(),
-    const grids.packed_accessor32<scalar_t,4,torch::RestrictPtrTraits>(),
-    grad_output.packed_accessor32<scalar_t,3,torch::RestrictPtrTraits>(),
-    // del_input.packed_accessor32<scalar_t,3,torch::RestrictPtrTraits>(),
-    del_weights.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>(),
-    del_grids.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>(),
-    size_t s0, size_t s1, size_t gx, size_t gy)
+    const torch::PackedTensorAccessor32<scalar_t,3,torch::RestrictPtrTraits> input_buffer,
+    const torch::PackedTensorAccessor32<scalar_t,4,torch::RestrictPtrTraits> weights,
+    const torch::PackedTensorAccessor32<scalar_t,5,torch::RestrictPtrTraits> grids,
+    torch::PackedTensorAccessor32<scalar_t,2,torch::RestrictPtrTraits> grad_output,
+    torch::PackedTensorAccessor32<scalar_t,5,torch::RestrictPtrTraits> del_weights,
+    torch::PackedTensorAccessor32<scalar_t,6,torch::RestrictPtrTraits> del_grids,
+    size_t s0, size_t s1, size_t gx, size_t gy, size_t num_layers)
 {
     // Each thread computes one batch of 2x2 operation.
     size_t bi = blockIdx.x * blockDim.x + threadIdx.x; // batch_size
@@ -159,7 +148,7 @@ __global__ void bilinear2x2_cuda_backward_kernel(
     int ix, iy;
     size_t gap, gidx, gidy;
 
-    for (size_t layer_i = num_layers; layer_i >= 0; layer_i--)
+    for (int layer_i = num_layers-1; layer_i >= 0; layer_i--)
     {
       gap = 1 << layer_i ;
       gidx = (gi%gap) + (gi / gap)*(1<<(layer_i+1)) ;
@@ -192,7 +181,7 @@ __global__ void bilinear2x2_cuda_backward_kernel(
       a11 = grids[layer_i][gi][0][ix+1][iy+1] - grids[layer_i][gi][0][ix+1][iy] - a01;
 
       // compute del input here
-      dy = del_output[bi][gix];
+      dy = grad_output[bi][gidx];
 
       dinp_x = dy*(a10+y*a11);
       dinp_y = dy*(a01+x*a11);
@@ -209,12 +198,12 @@ __global__ void bilinear2x2_cuda_backward_kernel(
       //////////// for second pairwise, doing the same
 
 
-      a00 = grids[gi][1][ix][iy];
-      a01 = grids[gi][1][ix][iy+1] - a00;
-      a10 = grids[gi][1][ix+1][iy] - a00;
-      a11 = grids[gi][1][ix+1][iy+1] - grids[gi][1][ix+1][iy] - a01;
+      a00 = grids[layer_i][gi][1][ix][iy];
+      a01 = grids[layer_i][gi][1][ix][iy+1] - a00;
+      a10 = grids[layer_i][gi][1][ix+1][iy] - a00;
+      a11 = grids[layer_i][gi][1][ix+1][iy+1] - grids[layer_i][gi][1][ix+1][iy] - a01;
 
-      dy = del_output[bi][gi][1];
+      dy = grad_output[bi][gidy];
 
       // this is del output for 2x2 linear layer before bilinear
       dinp_x += dy*(a10+y*a11);
@@ -234,15 +223,15 @@ __global__ void bilinear2x2_cuda_backward_kernel(
       /////////////////////////////////////////
       /////////////////////////////////////////
       /// for input weight layer
-      del_weight[layer_i][bi][gi][0][0] = dinp_x*input[bi][gix];
-      del_weight[layer_i][bi][gi][0][1] = dinp_y*input[bi][giy];
-      del_weight[layer_i][bi][gi][1][0] = dinp_x*input[bi][gix];
-      del_weight[layer_i][bi][gi][1][1] = dinp_y*input[bi][giy];
+      del_weights[layer_i][bi][gi][0][0] = dinp_x*input_buffer[layer_i][bi][gidx];
+      del_weights[layer_i][bi][gi][0][1] = dinp_y*input_buffer[layer_i][bi][gidy];
+      del_weights[layer_i][bi][gi][1][0] = dinp_x*input_buffer[layer_i][bi][gidx];
+      del_weights[layer_i][bi][gi][1][1] = dinp_y*input_buffer[layer_i][bi][gidy];
       
       /// this is actually del_input, however the variables are reused for next iteraton
-      grad_output[bi][gix] = dinp_x * weights[layer_i][bi][0][0] + 
+      grad_output[bi][gidx] = dinp_x * weights[layer_i][bi][0][0] + 
                             dinp_y * weights[layer_i][bi][0][1];
-      grad_output[bi][giy] = dinp_x * weights[layer_i][bi][1][0] + 
+      grad_output[bi][gidy] = dinp_x * weights[layer_i][bi][1][0] + 
                             dinp_y * weights[layer_i][bi][1][1];
 
       __syncthreads();
@@ -252,7 +241,7 @@ __global__ void bilinear2x2_cuda_backward_kernel(
 }
 
 
-std::vector<torch::Tensor> bilinear2x2_cuda_backward(
+std::vector<torch::Tensor> fused_bilinear2x2_cuda_backward(
     torch::Tensor input_buffer,
     torch::Tensor weights,
     torch::Tensor grids,
@@ -281,20 +270,21 @@ std::vector<torch::Tensor> bilinear2x2_cuda_backward(
 
   auto del_weights = torch::zeros(
                     {num_layers, s0, s1, 2, 2},
-                    input_buffer.device());
+                    weights.device());
   auto del_grids = torch::zeros(
                     {num_layers, s0, s1, grids.size(2), gx, gy},
-                    input_buffer.device()); // grids.size(2) == 2
+                    grids.device()); // grids.size(2) == 2
 
-  AT_DISPATCH_FLOATING_TYPES(input.type(), "bilinear2x2_backward_cuda", ([&] {
+  AT_DISPATCH_FLOATING_TYPES(input_buffer.type(), "bilinear2x2_backward_cuda", ([&] {
     bilinear2x2_cuda_backward_kernel<scalar_t><<<blocks_per_grid, threads_per_block>>>(
         input_buffer.packed_accessor32<scalar_t,3,torch::RestrictPtrTraits>(),
-        grids.packed_accessor32<scalar_t,4,torch::RestrictPtrTraits>(),
-        grad_output.packed_accessor32<scalar_t,3,torch::RestrictPtrTraits>(),
+        weights.packed_accessor32<scalar_t,4,torch::RestrictPtrTraits>(),
+        grids.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>(),
+        grad_output.packed_accessor32<scalar_t,2,torch::RestrictPtrTraits>(),
         del_weights.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>(),
-        del_grids.packed_accessor32<scalar_t,5,torch::RestrictPtrTraits>(),
-        s0, s1, gx, gy);
+        del_grids.packed_accessor32<scalar_t,6,torch::RestrictPtrTraits>(),
+        s0, s1, gx, gy, num_layers);
   }));
 
-  return {grad_output, torch::sum(del_grids, 1)};
+  return {grad_output, torch::sum(del_weights, 1), torch::sum(del_grids, 1)};
 }

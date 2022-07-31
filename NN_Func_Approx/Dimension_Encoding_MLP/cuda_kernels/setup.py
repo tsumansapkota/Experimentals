@@ -14,6 +14,11 @@ setup(
         CUDAExtension('bilinear2x2_cuda', [
             'bilinear2x2_cuda.cpp',
             'bilinear2x2_cuda_kernel.cu',
+        ]),
+
+        CUDAExtension('fused2x2ops_cuda', [
+            'fused2x2ops_cuda.cpp',
+            'fused2x2ops_cuda_kernel.cu',
         ])
     ],
     cmdclass={
