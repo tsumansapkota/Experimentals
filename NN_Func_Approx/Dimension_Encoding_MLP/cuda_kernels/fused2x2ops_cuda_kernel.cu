@@ -5,6 +5,7 @@
 
 #include <vector>
 
+
 #define BLOCK_DIM 16
 
 template <typename scalar_t>
@@ -29,6 +30,8 @@ __global__ void bilinear2x2_cuda_forward_kernel(
         return;
     }
     
+    // printf("IDS: %d %d\n", bi, gi); // printing does not work 
+
     scalar_t x, y, a00, a01, a10, a11;
     int ix, iy;
     size_t gap, gidx, gidy;
@@ -38,6 +41,16 @@ __global__ void bilinear2x2_cuda_forward_kernel(
       gap = 1 << layer_i ;
       gidx = (gi%gap) + (gi / gap)*(1<<(layer_i+1)) ;
       gidy = gidx+gap;
+
+
+      // # if __CUDA_ARCH__>=200
+      //     // printf("%d \n", tid);
+      //   printf("IDS: %d %d %d %d %d\n", layer_i, gi, gidx, gidy);
+      // #endif  
+
+      // gidy = (gi%gap) + (gi / gap)*(1<<(layer_i+1)) ;
+      // gidx = gidy+gap;
+
       /// save inputs for backward propagation      
       x = input[bi][gidx];
       y = input[bi][gidy];
@@ -153,6 +166,10 @@ __global__ void bilinear2x2_cuda_backward_kernel(
       gap = 1 << layer_i ;
       gidx = (gi%gap) + (gi / gap)*(1<<(layer_i+1)) ;
       gidy = gidx+gap;
+
+      // gidy = (gi%gap) + (gi / gap)*(1<<(layer_i+1)) ;
+      // gidx = gidy+gap;
+
       /// save inputs for backward propagation      
 
       x = input_buffer[layer_i][bi][gidx] ;
@@ -175,12 +192,14 @@ __global__ void bilinear2x2_cuda_backward_kernel(
       x -= (scalar_t) ix; // true value of x,y for the given piece
       y -= (scalar_t) iy; // given piece is in range [0,1]
 
+      /////////////////////////////////////////
+
       a00 = grids[layer_i][gi][0][ix][iy];
       a01 = grids[layer_i][gi][0][ix][iy+1] - a00;
       a10 = grids[layer_i][gi][0][ix+1][iy] - a00;
       a11 = grids[layer_i][gi][0][ix+1][iy+1] - grids[layer_i][gi][0][ix+1][iy] - a01;
 
-      // compute del input here
+      // compute del input here, say dx for meaning, dy is variable
       dy = grad_output[bi][gidx];
 
       dinp_x = dy*(a10+y*a11);
@@ -196,7 +215,6 @@ __global__ void bilinear2x2_cuda_backward_kernel(
       del_grids[layer_i][bi][gi][0][ix][iy] = dy - da01 - da10 + da11; 
 
       //////////// for second pairwise, doing the same
-
 
       a00 = grids[layer_i][gi][1][ix][iy];
       a01 = grids[layer_i][gi][1][ix][iy+1] - a00;
@@ -224,15 +242,15 @@ __global__ void bilinear2x2_cuda_backward_kernel(
       /////////////////////////////////////////
       /// for input weight layer
       del_weights[layer_i][bi][gi][0][0] = dinp_x*input_buffer[layer_i][bi][gidx];
-      del_weights[layer_i][bi][gi][0][1] = dinp_y*input_buffer[layer_i][bi][gidy];
-      del_weights[layer_i][bi][gi][1][0] = dinp_x*input_buffer[layer_i][bi][gidx];
+      del_weights[layer_i][bi][gi][0][1] = dinp_y*input_buffer[layer_i][bi][gidx];
+      del_weights[layer_i][bi][gi][1][0] = dinp_x*input_buffer[layer_i][bi][gidy];
       del_weights[layer_i][bi][gi][1][1] = dinp_y*input_buffer[layer_i][bi][gidy];
       
       /// this is actually del_input, however the variables are reused for next iteraton
-      grad_output[bi][gidx] = dinp_x * weights[layer_i][bi][0][0] + 
-                            dinp_y * weights[layer_i][bi][0][1];
-      grad_output[bi][gidy] = dinp_x * weights[layer_i][bi][1][0] + 
-                            dinp_y * weights[layer_i][bi][1][1];
+      grad_output[bi][gidx] = dinp_x * weights[layer_i][gi][0][0] + 
+                            dinp_y * weights[layer_i][gi][0][1];
+      grad_output[bi][gidy] = dinp_x * weights[layer_i][gi][1][0] + 
+                            dinp_y * weights[layer_i][gi][1][1];
 
       __syncthreads();
     }
@@ -287,4 +305,5 @@ std::vector<torch::Tensor> fused_bilinear2x2_cuda_backward(
   }));
 
   return {grad_output, torch::sum(del_weights, 1), torch::sum(del_grids, 1)};
+  // return {grad_output, torch::mean(del_weights, 1), torch::mean(del_grids, 1)};
 }
