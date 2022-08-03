@@ -79,7 +79,7 @@ std::vector<torch::Tensor> bilinear2x2_cuda_forward(
   blocks_per_grid.y = std::ceil(static_cast<double>(s1) /
                                 static_cast<double>(threads_per_block.y));
 
-  auto output = torch::zeros_like(input);
+  auto output = torch::zeros({s0, s1, 2}, input.device());
 
   AT_DISPATCH_FLOATING_TYPES(input.type(), "bilinear2x2_forward_cuda", ([&] {
     bilinear2x2_cuda_forward_kernel<scalar_t><<<blocks_per_grid, threads_per_block>>>(
