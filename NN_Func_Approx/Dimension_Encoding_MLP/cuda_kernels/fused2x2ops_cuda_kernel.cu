@@ -136,7 +136,7 @@ std::vector<torch::Tensor> fused_bilinear2x2_cuda_forward(
 
   auto debug_idx = torch::zeros({num_layers, s0, s1, 3}, input.device());
   
-  AT_DISPATCH_FLOATING_TYPES(input.type(), "bilinear2x2_forward_cuda", ([&] {
+  AT_DISPATCH_FLOATING_TYPES(input.type(), "fused_bilinear2x2_cuda_forward", ([&] {
     bilinear2x2_cuda_forward_kernel_fused<scalar_t><<<blocks_per_grid, threads_per_block>>>(
         input.packed_accessor32<scalar_t,2,torch::RestrictPtrTraits>(),
         weights.packed_accessor32<scalar_t,4,torch::RestrictPtrTraits>(),
@@ -326,7 +326,7 @@ std::vector<torch::Tensor> fused_bilinear2x2_cuda_backward(
                     {num_layers, s0, s1*2},
                     weights.device());
 
-  AT_DISPATCH_FLOATING_TYPES(input_buffer.type(), "bilinear2x2_backward_cuda", ([&] {
+  AT_DISPATCH_FLOATING_TYPES(input_buffer.type(), "fused_bilinear2x2_cuda_backward", ([&] {
     bilinear2x2_cuda_backward_kernel_fused<scalar_t><<<blocks_per_grid, threads_per_block>>>(
         input_buffer.packed_accessor32<scalar_t,3,torch::RestrictPtrTraits>(),
         weights.packed_accessor32<scalar_t,4,torch::RestrictPtrTraits>(),
