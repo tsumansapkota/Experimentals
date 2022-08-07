@@ -1,4 +1,5 @@
 #include <torch/extension.h>
+#include <c10/cuda/CUDAGuard.h>
 
 #include <vector>
 
@@ -51,6 +52,8 @@ std::vector<torch::Tensor> bilinear2x2_forward(
   CHECK_INPUT(input);
   CHECK_INPUT(weights);
   CHECK_INPUT(grids);
+  const at::cuda::OptionalCUDAGuard device_guard(device_of(input));
+  
   return fused_bilinear2x2_cuda_forward(input, weights, grids);
   }
 
@@ -63,6 +66,8 @@ std::vector<torch::Tensor> bilinear2x2_backward(
   CHECK_INPUT(weights);
   CHECK_INPUT(grids);
   CHECK_INPUT(grad_output);
+  const at::cuda::OptionalCUDAGuard device_guard(device_of(input_buffer));
+  
 
   return fused_bilinear2x2_cuda_backward(input_buffer, weights, grids, grad_output);
 }
