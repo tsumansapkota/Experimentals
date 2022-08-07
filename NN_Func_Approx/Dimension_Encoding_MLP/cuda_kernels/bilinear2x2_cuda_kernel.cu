@@ -343,7 +343,6 @@ __global__ void bilinear2x1_cuda_backward_kernel(
     return;
 }
 
-
 std::vector<torch::Tensor> bilinear2x1_cuda_backward(
     torch::Tensor input,
     torch::Tensor weights,
@@ -369,7 +368,7 @@ std::vector<torch::Tensor> bilinear2x1_cuda_backward(
 
   auto del_input = torch::zeros_like(input);
   auto del_weights = torch::zeros(
-                    {s0, weights.size(0), weights.size(1), gx, gy},
+                    {s0, s1, gx, gy},
                     input.device());
 
   AT_DISPATCH_FLOATING_TYPES(input.type(), "bilinear2x1_backward_cuda", ([&] {
