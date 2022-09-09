@@ -400,13 +400,13 @@ class ConvResidualFlow(Flow):
 
     def _inverse_yes_logDetJ(self, y):
         g = lambda z: y - self._forward_no_logDetJ(z)
-        x = broyden(g, torch.zeros_like(y), threshold=1000, eps=1e-5)["result"]
+        x = broyden(g, torch.zeros_like(y), threshold=10000, eps=1e-7)["result"]
         _, _logdetJ = self.forward(x, True)
         return x, -_logdetJ
 
     def _inverse_no_logDetJ(self, y):
         g = lambda z: y - self._forward_no_logDetJ(z)
-        x = broyden(g, torch.zeros_like(y), threshold=1000, eps=1e-5)["result"]
+        x = broyden(g, torch.zeros_like(y), threshold=10000, eps=1e-7)["result"]
         return x
     
 

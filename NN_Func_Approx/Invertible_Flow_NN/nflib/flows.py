@@ -268,6 +268,19 @@ class ActNorm2D(ActNorm):
             return z.reshape(xs1).transpose(1,3), _logdetJ
         else:
             return super().forward(x, False).reshape(xs1).transpose(1,3)
+        
+    
+    def inverse(self, z, logDetJ=False):
+        ### (N, dim, h, w)
+        x = z.transpose(1,3)
+        xs1 = x.shape #### (N, w, h, dim)
+        x = x.reshape(-1, xs1[3]) ## now in shape (N*h*w, dim)
+        # the batch of data needs to be reshaped
+        if logDetJ:
+            z, _logdetJ = super().inverse(x, True)
+            return z.reshape(xs1).transpose(1,3).contiguous() , _logdetJ
+        else:
+            return super().inverse(x, False).reshape(xs1).transpose(1,3).contiguous()
 
 
 class LinearFlow(Flow):
