@@ -260,6 +260,54 @@ std::vector<torch::Tensor> bmm2x2_cuda_forward(
 
 
 
+
+template <typename scalar_t>
+__global__ void bmm2x2_cuda_forward_inference_kernel(
+    torch::PackedTensorAccessor32<scalar_t,3,torch::RestrictPtrTraits> input, 
+    const torch::PackedTensorAccessor32<scalar_t,3,torch::RestrictPtrTraits> weight,
+    size_t s0, size_t s1)
+{
+    // Each thread computes one batch of 2x2 matmul.
+    size_t i0 = blockIdx.x * blockDim.x + threadIdx.x; // batch_size
+    size_t i1 = blockIdx.y * blockDim.y + threadIdx.y; // input_dim//2
+    if ((i0 >= s0) || (i1 >= s1)){
+        return;
+    }
+    
+    scalar_t tmp = input[i0][i1][0] * weight[i1][0][0] + 
+                          input[i0][i1][1] * weight[i1][1][0];
+    input[i0][i1][1] = input[i0][i1][0] * weight[i1][0][1] + 
+                          input[i0][i1][1] * weight[i1][1][1];
+    input[i0][i1][0] = tmp;
+    return;
+}
+
+std::vector<torch::Tensor> bmm2x2_cuda_forward_inference(
+    torch::Tensor input,
+    torch::Tensor weights) {
+
+  const auto s0 = input.size(0);
+  const auto s1 = input.size(1);
+
+  dim3 threads_per_block(BLOCK_DIM, BLOCK_DIM);
+  dim3 blocks_per_grid(1, 1);
+  blocks_per_grid.x = std::ceil(static_cast<double>(s0) /
+                                static_cast<double>(threads_per_block.x));
+  blocks_per_grid.y = std::ceil(static_cast<double>(s1) /
+                                static_cast<double>(threads_per_block.y));
+
+  AT_DISPATCH_FLOATING_TYPES(input.type(), "bmm2x2_forward_cuda", ([&] {
+    bmm2x2_cuda_forward_inference_kernel<scalar_t><<<blocks_per_grid, threads_per_block>>>(
+        input.packed_accessor32<scalar_t,3,torch::RestrictPtrTraits>(),
+        weights.packed_accessor32<scalar_t,3,torch::RestrictPtrTraits>(),
+        s0, s1);
+  }));
+
+  return {input};
+}
+
+
+
 template <typename scalar_t> // mat1 is X, mat2 is W -> Y = X.W
 __global__ void bmm2x2_cuda_backward_kernel(
     const torch::PackedTensorAccessor32<scalar_t,3,torch::RestrictPtrTraits> input, 
@@ -319,7 +367,10 @@ std::vector<torch::Tensor> bmm2x2_cuda_backward(
                                 static_cast<double>(threads_per_block.y));
 
   auto del_input = torch::zeros_like(input);
-  auto del_weights = torch::empty({s0, s1, 2, 2}, input.device());
+  auto options = torch::TensorOptions().dtype(input.dtype()).device(input.device());
+//   auto del_weights = torch::empty({s0, s1, 2, 2}, input.device());
+  auto del_weights = torch::empty({s0, s1, 2, 2}, options);
+
 
   AT_DISPATCH_FLOATING_TYPES(input.type(), "bmm2x2_backward_cuda", ([&] {
     bmm2x2_cuda_backward_kernel<scalar_t><<<blocks_per_grid, threads_per_block>>>(

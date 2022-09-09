@@ -8,6 +8,10 @@ std::vector<torch::Tensor> bmm2x2_cuda_forward(
     torch::Tensor input,
     torch::Tensor weights);
 
+std::vector<torch::Tensor> bmm2x2_cuda_forward_inference(
+    torch::Tensor input,
+    torch::Tensor weights);
+
 std::vector<torch::Tensor> bmm2x2_cuda_backward(
     torch::Tensor input,
     torch::Tensor weights,
@@ -32,6 +36,16 @@ std::vector<torch::Tensor> bmm2x2_forward(
     
   const at::cuda::OptionalCUDAGuard device_guard(device_of(input));
   return bmm2x2_cuda_forward(input, weights);
+}
+
+std::vector<torch::Tensor> bmm2x2_forward_inference(
+    torch::Tensor input,
+    torch::Tensor weights) {
+  CHECK_INPUT(input);
+  CHECK_INPUT(weights);
+    
+  const at::cuda::OptionalCUDAGuard device_guard(device_of(input));
+  return bmm2x2_cuda_forward_inference(input, weights);
 }
 
 std::vector<torch::Tensor> bmm2x2_backward(
@@ -107,7 +121,10 @@ std::vector<torch::Tensor> bmm2x1_backward(
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("forward", &bmm2x2_forward, "BMM2x2 forward (CUDA)");
+  m.def("forward_inference", &bmm2x2_forward_inference, "BMM2x2 forward inference (CUDA)");
+  
   m.def("backward", &bmm2x2_backward, "BMM2x2 backward (CUDA)");
+  
   // m.def("backward_v2", &bmm2x2_backward_v2, "BMM2x2 backward v2 (CUDA)");
   m.def("forward_2x1", &bmm2x1_forward, "BMM2x1 forward (CUDA)");
   m.def("backward_2x1", &bmm2x1_backward, "BMM2x1 backward (CUDA)");
