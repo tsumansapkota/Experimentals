@@ -238,6 +238,7 @@ class BlockLinear_MixerBlock(nn.Module):
         
         assert input_dim%block_dim == 0, "Input dim must be even number"
         self.input_dim = input_dim
+        self.block_dim = block_dim
         
         def log_base(a, base):
             return np.log(a) / np.log(base)
@@ -255,9 +256,9 @@ class BlockLinear_MixerBlock(nn.Module):
         bs = x.shape[0]
         y = x
         for i, fn in enumerate(self.facto_nets):
-            y = y.view(-1,4,4**i).permute(0, 2, 1).contiguous().view(bs, -1)
+            y = y.view(-1,self.block_dim,self.block_dim**i).permute(0, 2, 1).contiguous().view(bs, -1)
             y = fn(y)
-            y = y.view(-1,4**i,4).permute(0, 2, 1).contiguous()
+            y = y.view(-1,self.block_dim**i,self.block_dim).permute(0, 2, 1).contiguous()
 
         y = y.view(bs, -1)
         return y

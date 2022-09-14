@@ -34,3 +34,4 @@ var/
 */*.pth
 
 NN_Func_Approx/Dimension_Encoding_MLP/Distributed_Dimension_Mixture_Model/output/
+## NN_Func_Approx/Dimension_Encoding_MLP/Sparse_NonLinear/models

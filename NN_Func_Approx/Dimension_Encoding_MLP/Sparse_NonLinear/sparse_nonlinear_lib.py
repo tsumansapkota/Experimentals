@@ -3,8 +3,8 @@ import torch.nn as nn
 import numpy as np
 
 #### these are compiled from cuda kernels
-import bmm2x2_cuda
 import bilinear2x2_cuda
+import bmm2x2_cuda
 
 ############################################################################
 ############################################################################
@@ -229,6 +229,10 @@ class BlockWeight(nn.Module):
         x = x.transpose(1,0).reshape(bs, -1)
         return x
     
+    def __repr__(self):
+        S = f'BlockWeight: {list(self.weight.shape)}'
+        return S
+    
     
 class BlockLinear_MixerBlock(nn.Module):
     
@@ -237,6 +241,7 @@ class BlockLinear_MixerBlock(nn.Module):
         
         assert input_dim%block_dim == 0, "Input dim must be even number"
         self.input_dim = input_dim
+        self.block_dim = block_dim
         
         def log_base(a, base):
             return np.log(a) / np.log(base)
@@ -254,9 +259,9 @@ class BlockLinear_MixerBlock(nn.Module):
         bs = x.shape[0]
         y = x
         for i, fn in enumerate(self.facto_nets):
-            y = y.view(-1,4,4**i).permute(0, 2, 1).contiguous().view(bs, -1)
+            y = y.view(-1, self.block_dim, self.block_dim**i).permute(0, 2, 1).contiguous().view(bs, -1)
             y = fn(y)
-            y = y.view(-1,4**i,4).permute(0, 2, 1).contiguous()
+            y = y.view(-1, self.block_dim**i, self.block_dim).permute(0, 2, 1).contiguous()
 
         y = y.view(bs, -1)
         return y
@@ -293,7 +298,7 @@ class BlockLinear(nn.Module):
         return x
     
     def __repr__(self):
-        S = f'BlockLinear: [{self.weight.shape}]'
+        S = f'BlockLinear: {list(self.weight.shape)}'
         return S
 
 ############################################################################
@@ -316,12 +321,13 @@ class BlockMLP(nn.Module):
             self.mlp.append(a)
         self.mlp = self.mlp[:-1]
         self.mlp = nn.Sequential(*self.mlp)
-        self.ln = nn.LayerNorm(self.block_dim)
+#         self.ln = nn.LayerNorm(self.block_dim)
         
     def forward(self, x):
         bs, dim = x.shape[0], x.shape[1]
         x = x.view(bs, -1, self.block_dim).transpose(0,1)
-        x = self.mlp(self.ln(x)) + x
+#         x = self.mlp(self.ln(x)) + x
+        x = self.mlp(x) + x
         x = x.transpose(1,0).reshape(bs, -1)
         return x
     
@@ -398,20 +404,40 @@ class PairBilinear(nn.Module):
         self.Y = torch.repeat_interleave(self.Y.unsqueeze(0), num_pairs, dim=0)
         self.Y = nn.Parameter(self.Y)
         
+        del_x = 1/(grid_width-1) ## lipschitz constraint if multiplied by 1
+        slope = 2
+        self.dy = slope*del_x
+        
+        
     def forward(self, x):
         bs = x.shape[0]
         
         x = x.view(bs, -1, 2)
 #         x = BMM2x2Function.apply(x, self.pairW)
         ####################################################
+        
+        ### Constrain the bilinear to have specific slope, < 5
+        if self.training:
+            init0 = self.Y.data[:,:,:,:1]
+            init1 = self.Y.data[:,:,:1,:]
+            a0 = torch.diff(self.Y.data, dim=-1).clamp(-self.dy, self.dy)
+            a1 = torch.diff(self.Y.data, dim=-2).clamp(-self.dy, self.dy)
+            a0 = torch.cat([init0, a0], dim=-1)
+            a1 = torch.cat([init1, a1], dim=-2)
+            f0 = torch.cumsum(a0, dim=-1)
+            f1 = torch.cumsum(a1, dim=-2)
+            f = (f0+f1)/2
+            self.Y.data = f
+        
+        ####################################################
         x = BiLinear2x2Function.apply(x, self.Y)
         x = x.view(bs, -1)
         return x
     
     def __repr__(self):
-        t = self.pairW.shape[0]*2
+        t = self.Y.shape[0]*2
         u = self.Y.shape[2]
-        S = f'PairLinear: [{t} -> {t}] (grid: {u})'
+        S = f'PairBilinear: [{t} -> {t}] (grid: {u})'
         return S
 
 
@@ -455,7 +481,7 @@ class PairBilinearHalve(nn.Module):
         bs = x.shape[0]
         
         x = x.view(bs, -1, 2)
-#         x = BMM2x2Function.apply(x, self.pairW)
+        x = BMM2x2Function.apply(x, self.pairW)
         ####################################################
         x = BiLinear2x1Function.apply(x, self.Y)
         x = x.view(bs, -1)
@@ -515,6 +541,8 @@ class PairBilinear_MixerBlock(nn.Module):
         num_layers = int(np.ceil(np.log2(mix_dim)))
         for i in range(num_layers):
             net = PairBilinear(mix_dim, grid_width)
+            net.Y.data *= 0.0
+#             net.pairW.data *= 0.5
             self.pairwise_mixing.append(net)
         self.pairwise_mixing = nn.ModuleList(self.pairwise_mixing)
         
@@ -546,11 +574,9 @@ class PairBilinear_MixerBlock(nn.Module):
         
         y = x
         for i, fn in enumerate(self.pairwise_mixing):
-            _y = y
             y = y.view(-1,2,2**i).permute(0, 2,1).contiguous().view(bs, -1)
-            y = fn(y)
+            y = fn(y)+y
             y = y.view(-1,2**i,2).permute(0, 2,1).contiguous()
-            y = y + _y
 
         y = y.view(bs, -1)
 #         y = x + y ## this is residual addition... remove if only want feed forward
