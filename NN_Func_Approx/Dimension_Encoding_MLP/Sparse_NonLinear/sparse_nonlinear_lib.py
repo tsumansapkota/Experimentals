@@ -363,9 +363,9 @@ class BlockMLP_MixerBlock(nn.Module):
         for i, fn in enumerate(self.facto_nets):
             y = y.view(-1, self.block_dim, self.block_dim**i).permute(0, 2, 1).contiguous().view(bs, -1)
             y = fn(y)
-            y = y.view(-1, self.block_dim**i, self.block_dim).permute(0, 2, 1).contiguous()
+            y = y.view(-1, self.block_dim**i, self.block_dim).permute(0, 2, 1)
 
-        y = y.view(bs, -1)
+        y = y.contiguous().view(bs, -1)
         return y
 
 ############################################################################
@@ -576,9 +576,9 @@ class PairBilinear_MixerBlock(nn.Module):
         for i, fn in enumerate(self.pairwise_mixing):
             y = y.view(-1,2,2**i).permute(0, 2,1).contiguous().view(bs, -1)
             y = fn(y)+y
-            y = y.view(-1,2**i,2).permute(0, 2,1).contiguous()
+            y = y.view(-1,2**i,2).permute(0, 2,1)
 
-        y = y.view(bs, -1)
+        y = y.contiguous().view(bs, -1)
 #         y = x + y ## this is residual addition... remove if only want feed forward
         y = self.reducer(y)
         return y
