@@ -201,9 +201,9 @@ class PairLinear_MixerBlock(nn.Module):
         
         y = x
         for i, fn in enumerate(self.pairwise_mixing):
-            y = y.view(-1,2,2**i).permute(0, 2,1).contiguous().view(bs, -1)
+            y = y.view(bs, -1,2,2**i).transpose(2, 3).contiguous().view(bs, -1)
             y = fn(y)
-            y = y.view(-1,2**i,2).permute(0, 2,1).contiguous()
+            y = y.view(bs, -1,2**i,2).transpose(2, 3).contiguous()
 
         y = y.view(bs, -1)
 #         y = x + y ## this is residual addition... remove if only want feed forward
@@ -236,7 +236,11 @@ class BlockLinear_MixerBlock(nn.Module):
     def __init__(self, input_dim, block_dim):
         super().__init__()
         
-        assert input_dim%block_dim == 0, "Input dim must be even number"
+        assert input_dim%block_dim == 0, "Input dim must be divisible by block_dim"
+        
+        assert 2**int(np.log2(block_dim)) == block_dim, 'Block dim must be power of 2'
+        assert 2**int(np.log2(input_dim)) == input_dim, 'Input dim must be power of 2'
+        
         self.input_dim = input_dim
         self.block_dim = block_dim
         
@@ -246,9 +250,16 @@ class BlockLinear_MixerBlock(nn.Module):
         num_layers = int(np.ceil(log_base(input_dim, base=block_dim)))
             
         self.facto_nets = []
+        self.gaps = []
         for i in range(num_layers):
             net = BlockWeight(self.input_dim, block_dim)
             self.facto_nets.append(net)
+            
+            gap = self.block_dim**i
+            if gap*self.block_dim <= self.input_dim:
+                self.gaps.append(gap)
+            else:
+                self.gaps.append(int(np.ceil(self.input_dim/self.block_dim)))
             
         self.facto_nets = nn.ModuleList(self.facto_nets)
             
@@ -256,9 +267,15 @@ class BlockLinear_MixerBlock(nn.Module):
         bs = x.shape[0]
         y = x
         for i, fn in enumerate(self.facto_nets):
-            y = y.view(-1,self.block_dim,self.block_dim**i).permute(0, 2, 1).contiguous().view(bs, -1)
+            gap = self.gaps[i]
+  
+            y = y.view(bs, -1, self.block_dim, gap).transpose(2, 3).contiguous().view(bs, -1)
             y = fn(y)
-            y = y.view(-1,self.block_dim**i,self.block_dim).permute(0, 2, 1).contiguous()
+            y = y.view(bs, -1, gap, self.block_dim).transpose(2, 3).contiguous()
+
+#             y = y.view(bs, -1,self.block_dim,self.block_dim**i).transpose(2, 3).contiguous().view(bs, -1)
+#             y = fn(y)
+#             y = y.view(bs, -1,self.block_dim**i,self.block_dim).transpose(2, 3).contiguous()
 
         y = y.view(bs, -1)
         return y
