@@ -6,7 +6,7 @@ import numpy as np
 #############################################################################
 #############################################################################
 
-class MlpBLock(nn.Module):
+class ResMlpBlock(nn.Module):
     
     def __init__(self, input_dim, hidden_layers_ratio=[2], actf=nn.GELU):
         super().__init__()
@@ -29,7 +29,7 @@ class MlpBLock(nn.Module):
         self.mlp = nn.Sequential(*self.mlp)
         
     def forward(self, x):
-        return self.mlp(x)
+        return self.mlp(x)+x
     
     
 #############################################################################
@@ -72,6 +72,9 @@ class SelfAttention(nn.Module):
         # it's just how I like doing matrix multiplication & bmm
 
         energy = torch.einsum("nqhd,nkhd->nhqk", [queries, keys])
+        del queries, keys
+#         attention = torch.einsum("nqhd,nkhd->nhqk", [queries, keys])
+        
         # queries shape: (N, query_len, heads, heads_dim),
         # keys shape: (N, key_len, heads, heads_dim)
         # energy: (N, heads, query_len, key_len)
@@ -83,12 +86,17 @@ class SelfAttention(nn.Module):
         # Normalize energy values similarly to seq2seq + attention
         # so that they sum to 1. Also divide by scaling factor for
         # better stability
+
         attention = torch.softmax(energy / (self.embed_size ** (1 / 2)), dim=3)
+        del energy
+        
         # attention shape: (N, heads, query_len, key_len)
 
         out = torch.einsum("nhql,nlhd->nqhd", [attention, values]).reshape(
             N, query_len, self.heads * self.head_dim
         )
+        
+        del attention, values
         # attention shape: (N, heads, query_len, key_len)
         # values shape: (N, value_len, heads, heads_dim)
         # out after matrix multiply: (N, query_len, heads, head_dim), then
@@ -299,24 +307,137 @@ class SelfAttention_Sparse(nn.Module):
         # (N, query_len, embed_size)
         return out
     
+
     
+    
+############################################################################
+######### FOR BLOCK MLP
+############################################################################
+
+class BlockLinear(nn.Module):
+    def __init__(self, num_blocks, input_block_dim, output_block_dim, bias=True):
+        super().__init__()
+        self.weight = torch.randn(num_blocks, input_block_dim, output_block_dim)
+        
+        self.weight = nn.Parameter(self.weight)
+        
+        self.bias = None
+        if bias:
+            self.bias = nn.Parameter(torch.zeros(self.weight.shape[0], 1, output_block_dim))
+        
+    def forward(self, x):
+#         nblocks, bs, dim = x.shape[0], x.shape[1], x.shape[2]
+#         print(x.shape)
+        x = torch.bmm(x, self.weight)
+        if self.bias is not None:
+            x = x + self.bias
+        return x
+    
+    def __repr__(self):
+        S = f'BlockLinear: {list(self.weight.shape)}'
+        return S
+    
+############################################################################
+############################################################################
+
+class BlockMLP(nn.Module):
+    def __init__(self, input_dim, layer_dims, actf=nn.ELU):
+        super().__init__()
+        self.block_dim = layer_dims[0]
+        
+        assert input_dim%self.block_dim == 0, "Input dim must be even number"
+        ### Create a block MLP
+        self.mlp = []
+        n_blocks = input_dim//layer_dims[0]
+        for i in range(len(layer_dims)-1):
+            l = BlockLinear(n_blocks, layer_dims[i], layer_dims[i+1])
+            a = actf()
+            self.mlp.append(l)
+            self.mlp.append(a)
+            
+        self.mlp = self.mlp[:-1]
+        self.mlp = nn.Sequential(*self.mlp)
+#         self.ln = nn.LayerNorm(self.block_dim)
+        
+    def forward(self, x):
+        bs, dim = x.shape[0], x.shape[1]
+        x = x.view(bs, -1, self.block_dim).transpose(0,1)
+#         x = self.mlp(self.ln(x)) + x
+        x = self.mlp(x) + x
+        x = x.transpose(1,0).reshape(bs, -1)
+        return x
+    
+############################################################################
+############################################################################
+
+class BlockMLP_MixerBlock(nn.Module):
+    
+    def __init__(self, input_dim, block_dim, hidden_layers_ratio=[2], actf=nn.ELU):
+        super().__init__()
+        
+        assert input_dim%block_dim == 0, "Input dim must be even number"
+        self.input_dim = input_dim
+        self.block_dim = block_dim
+        
+        def log_base(a, base):
+            return np.log(a) / np.log(base)
+        
+        num_layers = int(np.ceil(log_base(input_dim, base=block_dim)))
+        hidden_layers_ratio = [1] + hidden_layers_ratio + [1]
+        
+        block_layer_dims = [int(a*block_dim) for a in hidden_layers_ratio]
+        self.facto_nets = []
+        self.gaps = []
+        for i in range(num_layers):
+            net = BlockMLP(self.input_dim, block_layer_dims, actf)
+            self.facto_nets.append(net)
+            
+            gap = self.block_dim**i
+            if gap*self.block_dim <= self.input_dim:
+                self.gaps.append(gap)
+            else:
+                self.gaps.append(int(np.ceil(self.input_dim/self.block_dim)))
+            
+        self.facto_nets = nn.ModuleList(self.facto_nets)
+            
+    def forward(self, x):
+        bs = x.shape[0]
+        y = x
+        for i, fn in enumerate(self.facto_nets):
+            gap = self.gaps[i]
+            y = y.view(-1, self.block_dim, gap).transpose(2, 1).contiguous().view(bs, -1)
+            y = fn(y)
+            y = y.view(-1, gap, self.block_dim).transpose(2, 1)
+
+        y = y.contiguous().view(bs, -1)
+        return y
+
 #############################################################################
 #############################################################################
+
+
 
 
 class Sparse_TransformerBlock(nn.Module):
-    def __init__(self, embed_size, heads, dropout, forward_expansion, actf=nn.GELU):
+    def __init__(self, embed_size, heads, dropout, forward_expansion, actf=nn.GELU, embed_block_size:int=None):
         super().__init__()
         
         self.attention = SelfAttention_Sparse(embed_size, heads)
             
         self.norm1 = nn.LayerNorm(embed_size)
 
-        self.feed_forward = nn.Sequential(
-            nn.Linear(embed_size, forward_expansion * embed_size),
-            actf(),
-            nn.Linear(forward_expansion * embed_size, embed_size),
-        )
+        
+        if embed_block_size is None or embed_block_size == embed_size:
+            hid = int(forward_expansion * embed_size)
+            self.feed_forward = ResMlpBlock(embed_size, [forward_expansion], actf)
+#             self.feed_forward = nn.Sequential(
+#                 nn.Linear(embed_size, hid),
+#                 actf(),
+#                 nn.Linear(hid, embed_size),
+#             )
+        else:
+            self.feed_forward = BlockMLP_MixerBlock(embed_size, embed_block_size, [forward_expansion], actf)
+            
         self.norm2 = nn.LayerNorm(embed_size)
         self.dropout = nn.Dropout(dropout)
 
@@ -325,9 +446,14 @@ class Sparse_TransformerBlock(nn.Module):
 
         # Add skip connection, run through normalization and finally dropout
         x = self.dropout(self.norm1(attention + query))
+        
+        _xs = x.shape
+        x = x.view(-1, _xs[-1])
+        
         forward = self.feed_forward(x)
-        out = self.dropout(self.norm2(forward + x))
-        return out
+#         out = self.dropout(self.norm2(forward + x))
+        out = self.dropout(self.norm2(forward))
+        return out.view(*_xs)
 
 
 #############################################################################
@@ -335,14 +461,18 @@ class Sparse_TransformerBlock(nn.Module):
 
 
 class Mixer_TransformerBlock_Encoder(nn.Module):
-    def __init__(self, seq_length, block_size, embed_size, heads, dropout, forward_expansion, actf=nn.GELU):
+    def __init__(self, seq_length, block_size, embed_size, heads, dropout, forward_expansion, actf=nn.GELU, embed_block_size=None):
         super().__init__()
         assert 2**int(np.log2(block_size)) == block_size, 'Block size must be power of 2'
         assert 2**int(np.log2(seq_length)) == seq_length, 'Sequence length must be power of 2'
+        
+        if embed_block_size is not None:
+            assert 2**int(np.log2(embed_block_size)) == embed_block_size, 'Embeddings block size must be power of 2'
         assert seq_length%block_size == 0, 'Sequence length must be divisible exactly by block_size'
         
         self.block_size = block_size
         self.seq_len = seq_length
+        self.embed_block_size = embed_block_size
         
         def log_base(a, base):
             return np.log(a) / np.log(base)
@@ -351,7 +481,7 @@ class Mixer_TransformerBlock_Encoder(nn.Module):
         self.sparse_transformers = []
         self.gaps = []
         for i in range(num_layers):            
-            tr = Sparse_TransformerBlock(embed_size, heads, dropout, forward_expansion, actf)
+            tr = Sparse_TransformerBlock(embed_size, heads, dropout, forward_expansion, actf, embed_block_size)
             self.sparse_transformers.append(tr)
             ### find which permutation gives valid shape
             gap = self.block_size**i
