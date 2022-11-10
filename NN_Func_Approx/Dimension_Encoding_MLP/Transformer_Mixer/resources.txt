@@ -1,0 +1,4 @@
+https://juliusruseckas.github.io/ml/cifar10-vit.html
+
+https://github.com/kentaroy47/vision-transformers-cifar10
+

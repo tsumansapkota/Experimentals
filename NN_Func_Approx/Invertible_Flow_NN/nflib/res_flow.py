@@ -330,7 +330,7 @@ class ResidualFlow(Flow):
 
 
 class ConvResidualFlow(Flow):
-    def __init__(self, in_channel, channels:list, kernels=3, activation=Swish, scaler=0.97, lipschitz_iter=2, inverse_iter=200, reverse=False):
+    def __init__(self, in_channel, channels:list, kernels=3, activation=Swish, scaler=0.97, lipschitz_iter=2, inverse_iter=500, reverse=False):
         super().__init__()
         assert len(channels)>0, "Dims should include N x hidden units"
         # assert activation in [ReLU, LeakyReLU, Swish], "Use ReLU or LeakyReLU or Swish"
@@ -363,7 +363,7 @@ class ConvResidualFlow(Flow):
         layers = layers[:-1]
         self.resblock = nn.ModuleList(layers)
         self.scaler = scaler
-        # self._update_spectral_norm_init(1)
+        self._update_spectral_norm_init(10)
 
     def forward(self, x, logDetJ:bool=False):
         if self.reverse:
@@ -398,18 +398,39 @@ class ConvResidualFlow(Flow):
                 res, _j = b(res)
         return x + res*self.scaler
 
+    def _fixed_point_(self, y):
+        # inversion of ResNet-block (fixed-point iteration) -- copied from
+        # https://github.com/jhjacobsen/invertible-resnet/blob/master/models/conv_iResNet.py
+        x = y.data.clone()
+        for iter_index in range(self.n_iter):
+            ### forward propagation
+            summand = x
+            for i, b in enumerate(self.resblock):
+                if i%2==0: ### if conv layer
+                    summand = b(summand)
+                else: ### if activation function
+                    summand, _ = b(summand)
+            ## fixed point iteration
+            x = y - summand*self.scaler
+        del y, summand
+        return x
+
     def _inverse_yes_logDetJ(self, y):
-        g = lambda z: y - self._forward_no_logDetJ(z)
-        x = broyden(g, torch.zeros_like(y), threshold=10000, eps=1e-7)["result"]
+        # g = lambda z: y - self._forward_no_logDetJ(z)
+        # x = broyden(g, torch.zeros_like(y), threshold=self.n_iter, eps=1e-7)["result"]
+        # x = broyden(g, y.data.clone(), threshold=self.n_iter, eps=1e-7)["result"]
+
+        x = self._fixed_point_(y)
         _, _logdetJ = self.forward(x, True)
         return x, -_logdetJ
 
     def _inverse_no_logDetJ(self, y):
         g = lambda z: y - self._forward_no_logDetJ(z)
-        x = broyden(g, torch.zeros_like(y), threshold=10000, eps=1e-7)["result"]
-        return x
-    
+        # x = broyden(g, torch.zeros_like(y), threshold=self.n_iter, eps=1e-7)["result"]
+        # x = broyden(g, y.data.clone(), threshold=self.n_iter, eps=1e-7)["result"]
 
+        return self._fixed_point_(y)
+    
     def _update_spectral_norm_init(self, N=10):
         ### update spectral norm layer for some steps.
         with torch.no_grad():
@@ -467,3 +488,124 @@ class Flatten(Flow):
 
     def _inverse_no_logDetJ(self, y):
         return self._inverse_yes_logDetJ(y)[0]
+
+
+
+
+
+
+
+####### Using diffent mechanism for inverting convolution original paper method
+from .utils.spectral_norm_conv_inplace import spectral_norm_conv
+from .utils.spectral_norm_fc import spectral_norm_fc
+
+
+class ConvResidualFlow_v2(Flow):
+    '''
+    image_dim: in_channel, h, w
+    '''
+    def __init__(self, image_dim, channels:list, kernels=3, activation=Swish, scaler=0.97, lipschitz_iter=5, inverse_iter=100, reverse=False):
+        super().__init__()
+        assert len(channels)>0, "Dims should include N x hidden units"
+        # assert activation in [ReLU, LeakyReLU, Swish], "Use ReLU or LeakyReLU or Swish"
+        self.n_iter = inverse_iter
+
+        self.reverse = reverse
+
+        self.in_channel = image_dim[0]
+        self.channels = channels
+        self.activation = activation
+
+        if isinstance(kernels, int):
+            self.kernels = [kernels for _ in range(len(channels)+1)]
+        else:
+            assert len(channels)+1 == len(kernels), "The length of kernels must be one greater than number of channels"
+            self.kernels = kernels
+
+        self.paddings = [(kernel-1)//2 for kernel in self.kernels]
+
+        layers = []
+        channels = [int(self.in_channel)]+\
+                    self.channels + [int(self.in_channel)]
+        for i in range(len(channels)-1):
+            conv = nn.Conv2d(channels[i], channels[i+1], self.kernels[i], 
+                                    padding=self.paddings[i])
+            # conv = nn.utils.spectral_norm(conv, n_power_iterations=lipschitz_iter)
+            if self.kernels[i] == 1:
+                conv = spectral_norm_fc(conv, scaler, n_power_iterations=lipschitz_iter)
+            else:
+                idim = (channels[i], image_dim[1], image_dim[2])
+                conv = spectral_norm_conv(conv, scaler, idim, n_power_iterations=lipschitz_iter)
+            layers.append(conv)
+            layers.append(self.activation())
+        
+        layers = layers[:-1]
+        self.resblock = nn.ModuleList(layers)
+        # self.scaler = scaler
+        # self._update_spectral_norm_init(10)
+
+    def forward(self, x, logDetJ:bool=False):
+        if self.reverse:
+            return self._inverse_yes_logDetJ(x) if logDetJ else self._inverse_no_logDetJ(x)
+        return self._forward_yes_logDetJ(x) if logDetJ else self._forward_no_logDetJ(x)
+    
+    def inverse(self, z, logDetJ:bool=False):
+        if self.reverse:
+            return self._forward_yes_logDetJ(z) if logDetJ else self._forward_no_logDetJ(z)
+        return self._inverse_yes_logDetJ(z) if logDetJ else self._inverse_no_logDetJ(z)
+
+    def _forward_yes_logDetJ(self, x):
+        if not x.requires_grad:
+            x = torch.autograd.Variable(x, requires_grad=True)
+        res = x
+        for i, b in enumerate(self.resblock):
+            if i%2==0: ### if conv layer
+                res = b(res)
+            else: ### if activation function
+                res, _j = b(res)
+        y = x + res
+        J = jacobian(y, x, True)
+        print("debug !! Computing jacobian, computationally expensive")
+        return y, torch.det(J).abs().log()
+
+    def _forward_no_logDetJ(self, x):
+        res = x
+        for i, b in enumerate(self.resblock):
+            if i%2==0: ### if conv layer
+                res = b(res)
+            else: ### if activation function
+                res, _j = b(res)
+        return x + res
+
+    def _fixed_point_(self, y):
+        # inversion of ResNet-block (fixed-point iteration) -- copied from
+        # https://github.com/jhjacobsen/invertible-resnet/blob/master/models/conv_iResNet.py
+        x = y.data.clone()
+        for iter_index in range(self.n_iter):
+            ### forward propagation
+            summand = x
+            for i, b in enumerate(self.resblock):
+                if i%2==0: ### if conv layer
+                    summand = b(summand)
+                else: ### if activation function
+                    summand, _ = b(summand)
+            ## fixed point iteration
+            x = y - summand
+        del y, summand
+        return x
+
+    def _inverse_yes_logDetJ(self, y):
+        # g = lambda z: y - self._forward_no_logDetJ(z)
+        # x = broyden(g, torch.zeros_like(y), threshold=self.n_iter, eps=1e-7)["result"]
+        # x = broyden(g, y.data.clone(), threshold=self.n_iter, eps=1e-7)["result"]
+
+        x = self._fixed_point_(y)
+        _, _logdetJ = self.forward(x, True)
+        return x, -_logdetJ
+
+    def _inverse_no_logDetJ(self, y):
+        # g = lambda z: y - self._forward_no_logDetJ(z)
+        # x = broyden(g, torch.zeros_like(y), threshold=self.n_iter, eps=1e-7)["result"]
+        # x = broyden(g, y.data.clone(), threshold=self.n_iter, eps=1e-7)["result"]
+
+        return self._fixed_point_(y)

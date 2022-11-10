@@ -97,18 +97,18 @@ class SequentialFlow(Flow):
     def _forward_intermediate_yes_logDetJ(self, x):
         m, _ = x.shape
         log_det = [torch.zeros(m)]
-        zs = [x]
+        zs = [x.data.cpu()]
         for flow in self.flows:
             x, ld = flow.forward(x, True)
-            log_det += [ld]
-            zs += [x]
+            log_det += [ld.data.cpu()]
+            zs += [x.data.cpu()]
         return zs, log_det
 
     def _forward_intermediate_no_logDetJ(self, x):
         zs = [x]
         for flow in self.flows:
             x = flow.forward(x, False)
-            zs.append(x)
+            zs.append(x.data.cpu())
         return zs
 
     def _inverse_yes_logDetJ(self, z):
@@ -127,18 +127,18 @@ class SequentialFlow(Flow):
     def _inverse_intermediate_yes_logDetJ(self, z):
         m, _ = z.shape
         log_det = [torch.zeros(m)]
-        xs = [z]
+        xs = [z.data.cpu()]
         for flow in self.flows[::-1]:
             z, ld = flow.inverse(z, True)
             log_det += [ld]
-            xs.append(z)
+            xs.append(z.data.cpu())
         return xs, log_det
 
     def _inverse_intermediate_no_logDetJ(self, z):
-        xs = [z]
+        xs = [z.data.cpu()]
         for flow in self.flows[::-1]:
             z = flow.inverse(z, False)
-            xs.append(z)
+            xs.append(z.data.cpu())
         return xs
 
     def inverse_intermediate(self, x, logDetJ=False):
