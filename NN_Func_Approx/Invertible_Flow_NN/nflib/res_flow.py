@@ -496,15 +496,33 @@ class Flatten(Flow):
 
 
 ####### Using diffent mechanism for inverting convolution original paper method
-from .utils.spectral_norm_conv_inplace import spectral_norm_conv
-from .utils.spectral_norm_fc import spectral_norm_fc
+from .utils.spectral_norm_conv_inplace import spectral_norm_conv, SpectralNormConv
+from .utils.spectral_norm_fc import spectral_norm_fc, SpectralNorm
+
+def remove_spectral_norm(module, name='weight'):
+    r"""Removes the spectral normalization reparameterization from a module.
+    Args:
+        module (nn.Module): containing module
+        name (str, optional): name of weight parameter
+    Example:
+        >>> m = spectral_norm_conv(nn.Linear(40, 10))
+        >>> remove_spectral_norm(m)
+    """
+    for k, hook in module._forward_pre_hooks.items():
+        if isinstance(hook, SpectralNormConv, SpectralNorm) and hook.name == name:
+            hook.remove(module)
+            del module._forward_pre_hooks[k]
+            return module
+
+    raise ValueError("spectral_norm of '{}' not found in {}".format(
+        name, module))
 
 
 class ConvResidualFlow_v2(Flow):
     '''
     image_dim: in_channel, h, w
     '''
-    def __init__(self, image_dim, channels:list, kernels=3, activation=Swish, scaler=0.97, lipschitz_iter=5, inverse_iter=100, reverse=False):
+    def __init__(self, image_dim, channels:list, kernels=3, activation=Swish, scaler=0.97, lipschitz_iter=2, inverse_iter=100, reverse=False):
         super().__init__()
         assert len(channels)>0, "Dims should include N x hidden units"
         # assert activation in [ReLU, LeakyReLU, Swish], "Use ReLU or LeakyReLU or Swish"
