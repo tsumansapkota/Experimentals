@@ -263,7 +263,7 @@ class SelfAttention_Sparse(nn.Module):
         self.fc_out = nn.Linear(embed_size, embed_size)
 
     def __repr__(self):
-        S = f'SelfAttention Sparse: [embed:{self.embed_size} heads:{self.head_dim}]'
+        S = f'SelfAttention Sparse: [embed:{self.embed_size} heads:{self.heads}]'
         return S
     
     def forward(self, values, keys, query, mask, block_size):
