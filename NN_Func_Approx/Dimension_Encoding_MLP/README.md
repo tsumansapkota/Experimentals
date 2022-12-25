@@ -1,0 +1,8 @@
+## Dimension Mixer Model
+
+### Abstract
+
+```The recent success of multiple vision architectures like CNN, ViT and MLP-Mixer motivates us to find the similarities and differences between these architectures. We find that these architectures with MLPs could be interpreted using a general concept of dimension mixing, which we call the Dimension Mixer Model. Dimension Mixer Model requires function approximators like Neural Networks to communicate between all input dimensions. The literature on Coupling-Flows, ShuffleNet, Megatron-LM etc. supports that partial signal mixing is sufficient for function approximation. We find that non-linear, learnable, multi-layered and group-wise sparse mixing of input dimensions is sufficient for approximating any function over the inputs. Using butterfly structure mixing inspired by Fast Fourier Transform (FFT), which we call butterfly mixer, we develop a non-linear mixer called MLP Butterfly Mixer and Grid-Bilinear Butterfly Mixer models. We also propose sparse Butterfly Attention for Transformers architecture. Experiments show these butterfly structured dimension mixer models are highly scalable and efficient. We also develop a new type of vision MLP-Mixer model called Patch-Only MLP-Mixer based on the dimension mixing theory which produces competitive accuracy compared to the original MLP-Mixer across datasets. We also touch on the benefits of the Dimension Mixer Model for distributed architectures. We show these resultant architectures as an application of the Dimension Mixer Model.```
+
+## Preprint
+[Here](Dimension_Mixer_Model.pdf")
