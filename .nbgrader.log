@@ -66,3 +66,24 @@
 [NotebookApp | INFO] Kernel shutdown: d8e49a59-d39c-4463-b474-6c24d993dd03
 [NotebookApp | INFO] Kernel shutdown: 887f7ccb-6186-4929-baa8-00909cc0713f
 [NotebookApp | INFO] Kernel shutdown: f1ba9c85-1dd1-451a-b701-eaf477072a31
+[NotebookApp | WARNING] No nbgrader_config.py file found (rerun with --debug to see where nbgrader is looking)
+[NotebookApp | INFO] Loading the validate_assignment nbgrader serverextension
+[NotebookApp | INFO] Serving notebooks from local directory: /home/tsuman/Artificial_Intelligence/Notebooks/Experimentals
+[NotebookApp | INFO] The Jupyter Notebook is running at:
+[NotebookApp | INFO] http://localhost:8888/?token=e15cfbf7af99a45a0670011b5ae6c040357a02259be66517
+[NotebookApp | INFO]  or http://127.0.0.1:8888/?token=e15cfbf7af99a45a0670011b5ae6c040357a02259be66517
+[NotebookApp | INFO] Use Control-C to stop this server and shut down all kernels (twice to skip confirmation).
+[NotebookApp | CRITICAL] 
+    
+    To access the notebook, open this file in a browser:
+        file:///home/tsuman/.local/share/jupyter/runtime/nbserver-3953-open.html
+    Or copy and paste one of these URLs:
+        http://localhost:8888/?token=e15cfbf7af99a45a0670011b5ae6c040357a02259be66517
+     or http://127.0.0.1:8888/?token=e15cfbf7af99a45a0670011b5ae6c040357a02259be66517
+[NotebookApp | INFO] Kernel started: 95d94f64-3ee7-47fe-b58d-47a7d9663653
+[NotebookApp | INFO] Saving file at /RoUgH_OtHeRs/01.0_Finding_modality_in_distribution_(softmax_w_temperature)_test.ipynb
+[NotebookApp | INFO] Starting buffering for 95d94f64-3ee7-47fe-b58d-47a7d9663653:484310347bd247b0b412f2a79737af41
+[NotebookApp | INFO] interrupted
+[NotebookApp | CRITICAL] Shutdown confirmed
+[NotebookApp | INFO] Shutting down 1 kernel
+[NotebookApp | INFO] Kernel shutdown: 95d94f64-3ee7-47fe-b58d-47a7d9663653
