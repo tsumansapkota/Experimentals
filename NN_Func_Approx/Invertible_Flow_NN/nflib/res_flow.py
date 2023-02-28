@@ -232,6 +232,28 @@ class ResidualFlow_x(Flow):
 #         update_lipschitz(self.resblock, 5)
 
 
+def get_children(module):
+    child = list(module.children())
+    if len(child) == 0:
+        return [module]
+    children = []
+    for ch in child:
+        grand_ch = get_children(ch)
+        children+=grand_ch
+    return children
+
+def remove_spectral_norm_model(model):
+    for child in get_children(model):
+        if hasattr(child, 'weight'):
+            print("Yes", child)
+            try:
+                nn.utils.remove_spectral_norm(child)
+                print("Success")
+            except:
+                print("Failed")
+    return
+
+
 class ResidualFlow(Flow):
     def __init__(self, dim, hidden_dims:list, activation=Swish, scaler=0.97, lipschitz_iter=2, inverse_iter=200, reverse=False):
         super().__init__()
