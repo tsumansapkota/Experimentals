@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 from typing import Union, Tuple
 import numpy as np
+from tqdm import tqdm
 
 ### shift normalized dists towards 0 for sparse activation with exponential
 # class DistanceTransform(nn.Module):
@@ -59,23 +60,46 @@ class DistanceTransformBase(nn.Module):
         return dists
     
     def set_centroid_to_data_randomly(self, data_loader):
-        indices = np.random.permutation(len(data_loader.dataset.data))[:self.centers.shape[0]]
-        self.centers.data = data_loader.dataset.data[indices].to(self.centers.device)
+#         indices = np.random.permutation(len(data_loader.dataset.data))[:self.centers.shape[0]]
+#         self.centers.data = data_loader.dataset.data[indices].to(self.centers.device)
+
+        ## sample N points
+        N = self.centers.shape[0]
+#         new_center = torch.empty_like(self.centers)
+        new_center = []
+        count = 0
+        for i, (xx, _) in enumerate(data_loader):
+            xx = xx.reshape(-1, self.input_dim).to(self.centers.device)
+            if count+xx.shape[0] < N:
+                new_center.append(xx)
+                count += xx.shape[0]
+            elif count >= N:
+                break
+            else:
+                new_center.append(xx[:N-count])
+                count = N
+                break
+        new_center = torch.cat(new_center, dim=0)
+        self.centers.data = new_center.to(self.centers.device)
         pass
     
-    def set_centroid_to_data_maxdist(self, data_loader):
+    def set_centroid_to_data_maxdist(self, data_loader, epoch=1.0):
         ## sample N points
         N = self.centers.shape[0]
         new_center = torch.empty_like(self.centers)
         min_dists = torch.empty(N)
         count = 0
+        steps = int(epoch*len(data_loader))
         for i, (xx, _) in enumerate(tqdm(data_loader)):
+            if i > steps: break
+            
+            xx = xx.reshape(-1, self.input_dim).to(self.centers.device)
             if count < N:
-                if N-count < batch_size:
+                if N-count < data_loader.batch_size:
                     #### final fillup
                     new_center[count:count+N-count] = xx[:N-count]
                     xx = xx[N-count:]
-                    dists = torch.cdist(new_center, new_center)+torch.eye(N)*1e5
+                    dists = torch.cdist(new_center, new_center)+torch.eye(N).to(self.centers.device)*1e5
                     min_dists = dists.min(dim=0)[0]
                     count = N
 
@@ -99,9 +123,11 @@ class DistanceTransformBase(nn.Module):
     def set_centroid_to_data(self, data_loader):
         new_center = self.centers.data.clone()
         min_dists = torch.ones(self.centers.shape[0])*1e9
+        min_dists = min_dists.to(self.centers.device)
 
-        for xx, _ in data_loader:
-
+        for xx, _ in tqdm(data_loader):
+            xx = xx.reshape(-1, self.input_dim).to(self.centers.device)
+            
             dists = torch.cdist(xx, self.centers.data)
             ### min dist of each center to the data points
             min_d, arg_md = dists.min(dim=0)
@@ -212,6 +238,11 @@ class StereographicTransform(nn.Module):
         x = torch.cat((x, new_dim), dim=1)
         x = self.linear(x)
         return x
+    
+#     @property
+#     def centers(self):
+#         centers = self.linear.weight.data / self.linear.weight.data.norm(p=2, dim=1, keepdim=True) #[H, I]
+#         return centers
 
 ### Activation function for Stereographic Transform
 class OneActiv(nn.Module):
@@ -262,22 +293,23 @@ class OneActiv(nn.Module):
         return self.func_mode(x)
     
 ## bias to basic dist
-class DistanceTransform(nn.Module):
+class DistanceTransform(DistanceTransformBase):
     
     def __init__(self, input_dim, num_centers, p=2, bias=False):
-        super().__init__()
+        super().__init__(input_dim, num_centers, p)
 #         bias=False
-        self.input_dim = input_dim
-        self.num_centers = num_centers
-        self.p = p
+#         self.input_dim = input_dim
+#         self.num_centers = num_centers
+#         self.p = p
         self.bias = nn.Parameter(torch.zeros(1, num_centers)) if bias else None
         
-        self.centers = torch.rand(num_centers, input_dim)
-        self.centers = nn.Parameter(self.centers)
+#         self.centers = torch.rand(num_centers, input_dim)
+#         self.centers = nn.Parameter(self.centers)
         
     def forward(self, x):
 #         x = x[:, :self.input_dim]
-        dists = torch.cdist(x, self.centers, p=self.p)
+#         dists = torch.cdist(x, self.centers, p=self.p)
+        dists = super().forward(x)
         
         ### normalize similar to UMAP
 #         dists = dists-dists.min(dim=1, keepdim=True)[0]
@@ -333,3 +365,18 @@ class DistanceTransformEMA(nn.Module):
     
     
 ###########################################
+class ScaleShift(nn.Module):
+    
+    def __init__(self, input_dim, scale_init=1, shift_init=0):
+        super().__init__()
+        self.scaler = nn.Parameter(torch.ones(1, input_dim))
+        self.shifter =  nn.Parameter(torch.ones(1, input_dim))
+        if scale_init is not None:
+            self.scaler.data *= scale_init
+            self.scaler.requires_grad = False
+        if shift_init is not None:
+            self.shifter.data *= shift_init
+            self.shifter.requires_grad = False
+        
+    def forward(self, x):
+        return x*self.scaler+self.shifter
