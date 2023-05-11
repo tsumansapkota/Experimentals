@@ -125,6 +125,25 @@ class DimensionSelector(nn.Module):
         S = f'DimensionSelector: [+={self.indices.shape[0]}]'
         return S
     
+class DimensionRandomSelector(nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super().__init__()
+        assert output_dim > input_dim, "Slection does not select all inputs"
+        
+        self.indices = torch.randperm(input_dim)
+
+        t = torch.randperm(input_dim)[:(output_dim-input_dim)]
+        self.indices = torch.cat([self.indices, t])
+            
+        
+    def forward(self, x):
+        ## x.shape = [batch_size, input_dim]
+        return x[:, self.indices]
+    
+    def __repr__(self):
+        S = f'DimensionSelector: [+={self.indices.shape[0]}]'
+        return S
+    
 ############################################################################
 ############################################################################
 
@@ -576,9 +595,9 @@ class PairBilinear_MixerBlock(nn.Module):
         for i, fn in enumerate(self.pairwise_mixing):
             y = y.view(-1,2,2**i).permute(0, 2,1).contiguous().view(bs, -1)
             y = fn(y)+y
-            y = y.view(-1,2**i,2).permute(0, 2,1)
+            y = y.view(-1,2**i,2).permute(0, 2,1).contiguous()
 
-        y = y.contiguous().view(bs, -1)
+        y = y.view(bs, -1)
 #         y = x + y ## this is residual addition... remove if only want feed forward
         y = self.reducer(y)
         return y
