@@ -39,12 +39,44 @@ class BasicBlock(nn.Module):
         super(BasicBlock, self).__init__()
         
         self.groups = groups
+        
+        assert planes%groups == 0 , "Layer Planes must be divisible by groups"
+        
+        
+        #################### PROBLEM: WITH DOWNSMAMPLE, THE FIRST BLOCK CAN'T MAKE GROUPS==PLANES 
+        #################### SOLUTION 1 #########################
+        ## Downsample (x2) with channel double, so incoming plane has less , 
+        ## DIVIDE GROUPS IN FIRST BLOCK BY 2 (BECAISE INPLANES ARE MULTIPLE OF 2
+#         if downsample and groups > 1:
+#             self.groups = int(np.ceil(groups//2))
+        
+        #################### SOLUTION 2 #########################
+        ## Make groups at maximum number of inplanes
+        if downsample and groups > inplanes:
+            self.groups = inplanes
+        
+        
+        ####### This means do not use grouping technique.. use normal convolution
+        if groups == -1:
+            self.groups = 1
+        #############################################
+            
+#         print(inplanes, planes, groups, self.groups)
+        
         self.conv1 = conv3x3(inplanes, planes, stride, self.groups)
         
         self.bn1 = nn.BatchNorm2d(planes)
         self.relu = nn.ReLU(inplace=True)
         
         self.groups2 = planes//self.groups
+        
+        ####### This means do not use grouping technique.. use normal convolution
+        if groups == -1:
+            self.groups2 = 1
+            
+        #############################################
+        
+#         print(self.groups2)
         self.conv2 = conv3x3(planes, planes, groups=self.groups2)
         
         self.bn2 = nn.BatchNorm2d(planes)
@@ -81,13 +113,14 @@ class CifarResNet(nn.Module):
         super(CifarResNet, self).__init__()
         global conv3x3, conv1x1
         
+        ### buffer for last used planes in conv-res-blocks
         self.inplanes = planes
         self.conv1 = conv3x3(3, planes)
         self.bn1 = nn.BatchNorm2d(planes)
         self.relu = nn.ReLU(inplace=True)
         
         if G is None:
-            G = [1, 1, 1]
+            G = [-1, -1, -1]
             if mixer:
                 G = [4, 8, 8]
                 
@@ -115,6 +148,7 @@ class CifarResNet(nn.Module):
             )
 
         layers = []
+        ### self.inplanes is from last block of _make_layer_
         layers.append(block(self.inplanes, planes, stride, downsample, groups=groups))
         self.inplanes = planes * block.expansion
         for _ in range(1, blocks):
