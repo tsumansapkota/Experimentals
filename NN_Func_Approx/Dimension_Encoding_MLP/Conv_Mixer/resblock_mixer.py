@@ -135,7 +135,6 @@ class CifarResNet(nn.Module):
         super(CifarResNet, self).__init__()
         global conv3x3, conv1x1
         
-        ### buffer for last used planes in conv-res-blocks
         self.inplanes = planes
         self.conv1 = conv3x3(3, planes)
         self.bn1 = nn.BatchNorm2d(planes)
@@ -206,16 +205,16 @@ def cifar_resnet23(**kwargs):
     return model
 
 
-def cifar_resnet32(**kwargs):
-    model = CifarResNet(BasicBlock, [5, 5, 5], **kwargs)
-    return model
+# def cifar_resnet32(**kwargs):
+#     model = CifarResNet(BasicBlock, [5, 5, 5], **kwargs)
+#     return model
 
 
-def cifar_resnet44(**kwargs):
-    model = CifarResNet(BasicBlock, [7, 7, 7], **kwargs)
-    return model
+# def cifar_resnet44(**kwargs):
+#     model = CifarResNet(BasicBlock, [7, 7, 7], **kwargs)
+#     return model
 
 
-def cifar_resnet56(**kwargs):
-    model = CifarResNet(BasicBlock, [9, 9, 9], **kwargs)
-    return model
+# def cifar_resnet56(**kwargs):
+#     model = CifarResNet(BasicBlock, [9, 9, 9], **kwargs)
+#     return model
