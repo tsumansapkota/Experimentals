@@ -240,6 +240,7 @@ class BlockWeight(nn.Module):
         assert input_dim%block_dim == 0, "Input dim must be even number"
         self.weight = torch.eye(block_dim).unsqueeze(0).repeat_interleave(input_dim//block_dim, dim=0)
         self.weight = nn.Parameter(self.weight)
+        self.reset_parameters()
         
     def forward(self, x):
         bs, dim = x.shape[0], x.shape[1]
@@ -251,6 +252,13 @@ class BlockWeight(nn.Module):
     def __repr__(self):
         S = f'BlockWeight: {list(self.weight.shape)}'
         return S
+    
+    def reset_parameters(self) -> None:
+        # Setting a=sqrt(5) in kaiming_uniform is the same as initializing with
+        # uniform(-1/sqrt(in_features), 1/sqrt(in_features)). For details, see
+        # https://github.com/pytorch/pytorch/issues/57109
+        nn.init.kaiming_uniform_(self.weight, a=np.sqrt(5))
+        pass
     
     
 class BlockLinear_MixerBlock(nn.Module):
@@ -313,6 +321,8 @@ class BlockLinear(nn.Module):
         self.bias = None
         if bias:
             self.bias = nn.Parameter(torch.zeros(self.weight.shape[0], 1, output_block_dim))
+        self.reset_parameters()    
+        
         
     def forward(self, x):
 #         nblocks, bs, dim = x.shape[0], x.shape[1], x.shape[2]
@@ -325,6 +335,17 @@ class BlockLinear(nn.Module):
     def __repr__(self):
         S = f'BlockLinear: {list(self.weight.shape)}'
         return S
+    
+    def reset_parameters(self) -> None:
+        # Setting a=sqrt(5) in kaiming_uniform is the same as initializing with
+        # uniform(-1/sqrt(in_features), 1/sqrt(in_features)). For details, see
+        # https://github.com/pytorch/pytorch/issues/57109
+        nn.init.kaiming_uniform_(self.weight, a=np.sqrt(5))
+        if self.bias is not None:
+            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
+            bound = 1 / np.sqrt(fan_in) if fan_in > 0 else 0
+            nn.init.uniform_(self.bias, -bound, bound)
+        pass
 
 ############################################################################
 ############################################################################

@@ -41,3 +41,4 @@ NN_Func_Approx/Dimension_Encoding_MLP/Transformer_Mixer/output/benchmark/plots
 NN_Func_Approx/Invertible_Flow_NN/nflib/__pycache__
 NN_Func_Approx/Invertible_Flow_NN/nflib/utils/__pycache__/
 NN_Func_Approx/Dimension_Encoding_MLP/Sparse_NonLinear/models/
+NN_Func_Approx/Dimension_Encoding_MLP/Sparse_NonLinear/models_v1/
