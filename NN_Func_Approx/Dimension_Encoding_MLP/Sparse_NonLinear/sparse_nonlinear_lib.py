@@ -255,7 +255,7 @@ class BlockWeight(nn.Module):
     
 class BlockLinear_MixerBlock(nn.Module):
     
-    def __init__(self, input_dim, block_dim):
+    def __init__(self, input_dim, block_dim, bias=False):
         super().__init__()
         
         assert input_dim%block_dim == 0, "Input dim must be even number"
@@ -273,6 +273,10 @@ class BlockLinear_MixerBlock(nn.Module):
             self.facto_nets.append(net)
             
         self.facto_nets = nn.ModuleList(self.facto_nets)
+
+        self.bias = None
+        if bias:
+            self.bias = nn.Parameter(torch.zeros(1, input_dim))
             
     def forward(self, x):
         bs = x.shape[0]
@@ -283,6 +287,8 @@ class BlockLinear_MixerBlock(nn.Module):
             y = y.view(-1, self.block_dim**i, self.block_dim).permute(0, 2, 1).contiguous()
 
         y = y.view(bs, -1)
+        if self.bias is not None:
+            y = y + self.bias
         return y
 
 ############################################################################
