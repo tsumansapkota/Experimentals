@@ -39,7 +39,7 @@ class Conv2D_DT(nn.Module):
             else:
                 raise NotImplementedError(f"Distance: {distance} function not defined")
         if isinstance(distance, (int, float)):
-            self.dt = DistanceTransform(self.input_dim, out_channels, p=distance)
+            self.dt = DistanceTransform(self.input_dim, out_channels, p=distance, bias=True)
         pass
     
     def _preprocess_(self):

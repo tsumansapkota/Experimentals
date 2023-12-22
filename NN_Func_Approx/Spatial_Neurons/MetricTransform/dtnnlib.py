@@ -212,7 +212,7 @@ class StereographicTransform(nn.Module):
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.normalize = normalize
-        self.inp_scaler = nn.Parameter(torch.Tensor([1/np.sqrt(self.input_dim)]))
+        self.inp_scaler = nn.Parameter(torch.log(torch.Tensor([1/np.sqrt(self.input_dim)])))
         self.linear = nn.Linear(input_dim+1, output_dim, bias=bias)
         
         self.linear.weight.data /= self.linear.weight.data.norm(p=2, dim=1, keepdim=True)
@@ -231,7 +231,7 @@ class StereographicTransform(nn.Module):
         ### linear has weight -> (outdim, indim) format, so normalizing per output dimension
 #         print(self.linear.weight.data.norm(dim=1))
         
-        x = x*self.inp_scaler
+        x = x*torch.exp(self.inp_scaler)
         sqnorm = (x**2).sum(dim=1, keepdim=True) ## l2 norm squared
         x = x*2/(sqnorm+1)
         new_dim = (sqnorm-1)/(sqnorm+1)
