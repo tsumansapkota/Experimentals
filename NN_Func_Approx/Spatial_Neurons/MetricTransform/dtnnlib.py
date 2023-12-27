@@ -239,6 +239,22 @@ class StereographicTransform(nn.Module):
         x = self.linear(x)
         return x
     
+#     def inv_streo(x):
+#         sqnorm = (x**2).sum(dim=1, keepdim=True) ## l2 norm squared
+#         x = x*2/(sqnorm+1)
+#         new_dim = (sqnorm-1)/(sqnorm+1)
+#         x = torch.cat((x, new_dim), dim=1)
+#         return x
+#     def streo(x):
+#         x_ = x[:, :-1]
+#         new_dim = x[:, -1:]
+#         sqnorm = (1+new_dim)/(1-new_dim)
+#         x_ = x_/2*(sqnorm+1)
+#         return x_
+#         x = [[-1.8530,  0.0267]]
+#         inv_streo(x) = [[-0.8358,  0.0120,  0.5490]]
+#         stereo(inv_streo(x)) = [[-1.8530,  0.0267]]
+    
 #     @property
 #     def centers(self):
 #         centers = self.linear.weight.data / self.linear.weight.data.norm(p=2, dim=1, keepdim=True) #[H, I]
