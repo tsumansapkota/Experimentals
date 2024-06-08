@@ -11,7 +11,8 @@ My_StackedAE/save
 __pycache__/
 *.py[cod]
 *.zip
-
+*.mp4
+*.mp3
 
 # C extensions
 *.so

@@ -29,3 +29,5 @@ This collection jupter notebooks use general libraries like **numpy**, **matplot
 
 ### Message
 If there is anything I can help with, please let me know, or raise issue. If anything is helpful to you, please make sure to give credit.
+
+If it is not possible to give credit (eg. closed source project), make sure to get consent from the author (me :: [email](mailto:natokpas@gmail.com) :: [homepage](https://tsumansapkota.github.io/about/)).
